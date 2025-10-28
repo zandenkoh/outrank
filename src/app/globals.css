@@ -1,26 +1,71 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Theme Customizations (@theme directive for v4) */
+@theme {
+  /* Colors (extend default palette) */
+  --color-primary: #2B6EF6;
+  --color-accent: #00C8A7;
+  --color-surface-dark: #0F1724;
+  --color-surface-light: #FFFFFF;
+  --color-neutral-dark: #111827;
+  --color-neutral-muted: #9CA3AF;
+  --color-error: #EF4444;
+  --color-success: #16A34A;
+
+  /* Spacing Scale (base 8px equivalents; extend defaults where needed) */
+  --spacing-8: 2rem;  /* p-8, m-8, etc. */
+  --spacing-12: 3rem;
+  --spacing-16: 4rem;
+  --spacing-24: 6rem;
+  --spacing-32: 8rem;
+  --spacing-48: 12rem;
+
+  /* Typography */
+  --font-sans: Inter, sans-serif;
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
+
+  /* Border Radius */
+  --radius-card: 12px;
+  --radius-button: 10px;
+
+  /* Box Shadows */
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* Custom Utility Classes (using @layer for components in v4) */
+@layer components {
+  .h1 { @apply text-[28px] font-semibold leading-[1.25]; }
+  .h2 { @apply text-[20px] font-semibold leading-[1.25]; }
+  .body { @apply text-sm leading-[1.5]; }  /* ~15px */
+  .small { @apply text-xs leading-[1.5]; }  /* ~13px */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  .btn-primary {
+    @apply bg-primary text-white px-4 py-3 rounded-[var(--radius-button)] shadow-md hover:shadow-lg transition-shadow duration-200;
+  }
+  .btn-secondary {
+    @apply border border-primary text-primary px-4 py-3 rounded-[var(--radius-button)] hover:bg-primary hover:text-white transition-colors duration-200;
+  }
+  .card {
+    @apply bg-white dark:bg-[var(--color-surface-dark)] rounded-[var(--radius-card)] p-4 shadow-[var(--shadow-card)] border border-gray-200 dark:border-gray-700;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Dark Mode (class-based, as before) */
+@layer base {
+  :root {
+    --color-surface: var(--color-surface-light);
+    --color-neutral: var(--color-neutral-dark);
+  }
+  .dark {
+    --color-surface: var(--color-surface-dark);
+    --color-neutral: var(--color-neutral-muted);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+html {
+  overflow-y: scroll;
 }

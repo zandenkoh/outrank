@@ -1,0 +1,797 @@
+outrank/
+├── public/
+│   ├── icons/
+│   │   ├── icon-192.png
+│   │   ├── icon-512.png
+│   │   └── apple-touch-icon.png
+│   ├── manifest.json
+│   └── favicon.ico
+│
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx                 # Root layout with providers
+│   │   ├── page.tsx                   # Landing page
+│   │   ├── globals.css                # Global styles + Tailwind
+│   │   │
+│   │   ├── onboarding/
+│   │   │   ├── page.tsx               # Onboarding flow
+│   │   │   ├── school/page.tsx        # Step 1: School selection
+│   │   │   ├── nickname/page.tsx      # Step 2: Nickname
+│   │   │   └── level/page.tsx         # Step 3: Level selection
+│   │   │
+│   │   ├── dashboard/
+│   │   │   ├── page.tsx               # Main dashboard
+│   │   │   └── layout.tsx             # Dashboard layout with nav
+│   │   │
+│   │   ├── rankings/
+│   │   │   ├── page.tsx               # Cohort comparison view
+│   │   │   └── school/page.tsx        # School leaderboard
+│   │   │
+│   │   ├── history/
+│   │   │   ├── page.tsx               # All grades list
+│   │   │   └── [subject]/page.tsx     # Subject-specific history
+│   │   │
+│   │   ├── profile/
+│   │   │   ├── page.tsx               # Profile & settings
+│   │   │   └── edit/page.tsx          # Edit profile
+│   │   │
+│   │   └── api/
+│   │       ├── grades/
+│   │       │   ├── route.ts           # GET/POST grades
+│   │       │   └── [id]/route.ts      # PUT/DELETE specific grade
+│   │       │
+│   │       ├── percentile/
+│   │       │   └── route.ts           # Calculate percentile
+│   │       │
+│   │       └── stats/
+│   │           ├── personal/route.ts   # User's stats
+│   │           ├── cohort/route.ts     # Cohort stats
+│   │           └── school/route.ts     # School rankings
+│   │
+│   ├── components/
+│   │   ├── ui/
+│   │   │   ├── Button.tsx
+│   │   │   ├── Card.tsx
+│   │   │   ├── Input.tsx
+│   │   │   ├── Modal.tsx
+│   │   │   ├── Select.tsx
+│   │   │   └── Tabs.tsx
+│   │   │
+│   │   ├── dashboard/
+│   │   │   ├── AverageCard.tsx        # Overall average display
+│   │   │   ├── PercentileCard.tsx     # Rank display
+│   │   │   ├── SubjectCard.tsx        # Individual subject card
+│   │   │   ├── SchoolStatsCard.tsx    # School stats
+│   │   │   └── ActivityFeed.tsx       # Recent activity
+│   │   │
+│   │   ├── grades/
+│   │   │   ├── AddGradeModal.tsx      # Grade entry modal
+│   │   │   ├── GradeList.tsx          # List of grades
+│   │   │   └── GradeCard.tsx          # Single grade item
+│   │   │
+│   │   ├── charts/
+│   │   │   ├── DistributionChart.tsx  # Bell curve/percentile viz
+│   │   │   ├── TrendChart.tsx         # Line chart for trends
+│   │   │   └── MiniSparkline.tsx      # Small subject charts
+│   │   │
+│   │   ├── navigation/
+│   │   │   ├── BottomNav.tsx          # Bottom tab bar
+│   │   │   ├── Header.tsx             # Top header
+│   │   │   └── FAB.tsx                # Floating action button
+│   │   │
+│   │   └── shared/
+│   │       ├── Loading.tsx            # Loading states
+│   │       ├── EmptyState.tsx         # Empty state component
+│   │       └── ErrorBoundary.tsx      # Error handling
+│   │
+│   ├── lib/
+│   │   ├── supabase/
+│   │   │   ├── client.ts              # Supabase browser client
+│   │   │   ├── server.ts              # Supabase server client
+│   │   │   └── middleware.ts          # Auth middleware
+│   │   │
+│   │   ├── hooks/
+│   │   │   ├── useGrades.ts           # Grades CRUD operations
+│   │   │   ├── useStats.ts            # Stats calculations
+│   │   │   ├── usePercentile.ts       # Percentile data
+│   │   │   └── useUser.ts             # User data & auth
+│   │   │
+│   │   ├── utils/
+│   │   │   ├── calculations.ts        # Grade calculations logic
+│   │   │   ├── percentile.ts          # Percentile algorithms
+│   │   │   ├── formatters.ts          # Date/number formatting
+│   │   │   └── validators.ts          # Input validation
+│   │   │
+│   │   └── constants/
+│   │       ├── schools.ts             # Singapore schools list
+│   │       ├── subjects.ts            # Subject list with emojis
+│   │       └── config.ts              # App configuration
+│   │
+│   ├── store/
+│   │   ├── userStore.ts               # User state (Zustand)
+│   │   ├── gradesStore.ts             # Grades state
+│   │   └── uiStore.ts                 # UI state (modals, etc.)
+│   │
+│   └── types/
+│       ├── database.types.ts          # Supabase generated types
+│       ├── grade.types.ts             # Grade interfaces
+│       ├── user.types.ts              # User interfaces
+│       └── stats.types.ts             # Stats interfaces
+│
+├── supabase/
+│   ├── migrations/
+│   │   ├── 20250101000000_initial_schema.sql
+│   │   ├── 20250101000001_rls_policies.sql
+│   │   └── 20250101000002_functions.sql
+│   │
+│   ├── functions/
+│   │   ├── calculate-percentile/
+│   │   │   └── index.ts               # Edge function for percentile
+│   │   └── update-school-stats/
+│   │       └── index.ts               # Edge function for school stats
+│   │
+│   └── config.toml                    # Supabase local config
+│
+├── .env.local                         # Environment variables
+├── .env.example                       # Example env file
+├── next.config.js                     # Next.js configuration
+├── next-env.d.ts
+├── tailwind.config.ts                 # Tailwind configuration
+├── tsconfig.json                      # TypeScript configuration
+├── eslint.config.mjs
+├── pnpm-lock.yaml
+├── postcss.config.mjs
+└── package.json                       # Dependencies
+
+
+FULL APP STRUCTURE & DESIGN SPEC
+
+1. LANDING PAGE (for web)
+Purpose: Convert visitors into users before they even sign up
+Design (Apple-inspired):
+Hero Section:
+
+Full viewport height
+Dark gradient background (deep navy → black)
+Centered content:
+
+Headline (large, bold): "Know where you really stand."
+Subheadline: "Track grades. Compare with your cohort. See your real rank."
+Live counter: "1,247 students across 18 schools" (subtle animation)
+CTA button: Big, prominent "Get Started" (lime green accent like Apple Fitness)
+
+
+
+Feature Preview Section:
+
+3 iPhone mockups side-by-side showing:
+
+Your stats dashboard
+Percentile ranking
+School comparison
+
+
+Each with a short caption underneath
+
+Social Proof Section:
+
+Scrolling ticker of anonymous stats:
+
+"Student from RI just reached 90th percentile"
+"HCI students average 84.2 in Math"
+"23 students from VJC joined today"
+
+
+
+Footer:
+
+Simple links: About, Privacy, Contact
+Social media icons
+
+Sticky header (on scroll):
+
+Logo left
+"Get Started" button right
+
+
+2. ONBOARDING FLOW
+Screen 1: School Selection
+
+Header: "Welcome! 👋"
+Subtext: "Which school are you from?"
+Search bar with autocomplete
+
+Shows all Singapore secondary schools/JCs as you type
+Or scroll through categorized list (Secondary / JC / IB)
+
+
+Continue button (disabled until selection made)
+
+Design notes:
+
+Dark background (#121212)
+Search bar: Dark gray (#1E1E1E) with white text
+Selected school highlights in lime green
+Smooth keyboard appears on mobile
+
+
+Screen 2: Nickname
+
+Header: "Choose your nickname"
+Subtext: "This is how you'll appear to others (anonymous)"
+Text input field (large, centered)
+Character limit: 15 characters
+Suggestion chips below: Random fun suggestions like "MathGenius", "ChemWizard", "StudyGrind"
+Continue button
+
+Design notes:
+
+Input field has subtle glow on focus
+Real-time character counter
+Haptic feedback when typing (mobile)
+
+
+Screen 3: Level Selection
+
+Header: "What level are you?"
+Grid of options:
+
+Sec 1, Sec 2, Sec 3, Sec 4
+JC 1, JC 2
+IB Year 1, IB Year 2
+
+
+Each option is a card that scales up on hover/press
+Continue button → "Let's go!"
+
+Design notes:
+
+2x4 grid layout
+Cards have subtle border, highlight in green when selected
+Nice bounce animation on selection
+
+
+Onboarding Complete → Animation
+
+Quick celebration animation (confetti or sparkle effect)
+"You're all set! ✨"
+Auto-transition to main dashboard after 1 second
+
+
+3. MAIN DASHBOARD (The Core Screen)
+Layout structure (Apple Fitness inspired):
+Top Section:
+┌─────────────────────────────┐ 
+│  [Profile icon]    [+ Add]  │  ← Header bar
+├─────────────────────────────┤
+│                             │
+│        MONDAY, OCT 27       │  ← Date
+│        Dashboard            │  ← Title
+│         [School icon]       │  ← Small icon
+│                             │
+└─────────────────────────────┘
+```
+
+**Scrollable Content (vertical cards):**
+
+---
+
+### **CARD 1: Your Overall Average** (Hero card - biggest)
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│  Your Average               │
+│                             │
+│         83.2                │  ← HUGE number
+│       ↑ 2.1 this month      │  ← Green arrow + trend
+│                             │
+│  [Mini bar chart showing    │  ← Subtle visualization
+│   last 6 entries]           │
+│                             │
+└─────────────────────────────┘
+```
+
+**Design details:**
+- Card background: Dark gray (#1C1C1E)
+- Main number: White, 72pt font, bold
+- Trend: Green for up, red for down with arrow icon
+- Mini bar chart: Subtle, thin bars, gradient fill
+- Rounded corners (16px radius)
+- Subtle shadow
+
+---
+
+### **CARD 2: Your Percentile Rank** (The hook - make this POP)
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│  🏆 Your Rank               │
+│                             │
+│     78th Percentile         │  ← Big, bold
+│                             │
+│  Better than 617 students   │  ← Subtext
+│                             │
+│  [Horizontal progress bar   │  ← Visual rank indicator
+│   showing position]         │    (you're 78% along)
+│                             │
+│  [Toggle: School | Singapore]│  ← Switch view
+│                             │
+└─────────────────────────────┘
+```
+
+**Design details:**
+- Trophy emoji or icon
+- Percentile number: Lime green (#C7F464), large
+- Progress bar: Gradient (purple → cyan like Apple Fitness)
+- Your position marked with a dot
+- Toggle buttons: Segmented control style
+- Card slightly taller than others
+
+**Interaction:**
+- Tap card → expands to show full distribution
+- Animated transition
+
+---
+
+### **CARDS 3-N: Subject Breakdown** (2 per row, compact)
+
+**Layout (side by side):**
+```
+┌──────────────┐ ┌──────────────┐
+│ 📐 Math      │ │ 🧪 Chemistry │
+│              │ │              │
+│   87.5  ↑    │ │   82.3  ↓    │
+│              │ │              │
+│ [Mini graph] │ │ [Mini graph] │
+│              │ │              │
+│ 85th %ile    │ │ 72nd %ile    │
+└──────────────┘ └──────────────┘
+```
+
+**Design details:**
+- Smaller cards, 2 columns
+- Subject emoji or icon
+- Average in white, trend arrow
+- Tiny sparkline showing last 5 grades
+- Percentile in smaller, muted text below
+- Tap to see full subject details
+
+---
+
+### **CARD: School Stats** (Full width)
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│  [School Name] Stats        │
+│                             │
+│  School Rank: #4 🇸🇬        │
+│  47 students on the app     │
+│                             │
+│  Top Subject: Physics 86.2  │
+│  Most Improved: Math +3.1   │
+│                             │
+│  [View Leaderboard >]       │
+└─────────────────────────────┘
+```
+
+**Design details:**
+- School pride colors/branding if possible
+- Quick stats, scannable
+- CTA to deeper view
+- Celebration when school rank improves
+
+---
+
+**Bottom of scroll:**
+- "Add a grade to see updated stats" prompt if empty
+- Subtle fade out
+
+---
+
+## **4. ADD GRADE SCREEN/MODAL**
+
+**Trigger:** Tap the **"+" FAB** (floating action button) - bottom right, always visible, lime green
+
+**Presentation:** Modal slides up from bottom (iOS style sheet)
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│  [━]  ← Drag handle         │
+│                             │
+│  Add Grade                  │  ← Title
+│                             │
+│  Subject                    │
+│  [Mathematics        ▾]     │  ← Dropdown
+│                             │
+│  Assessment Name            │
+│  [Mid-Year Exam      ]      │  ← Text input
+│                             │
+│  Your Score                 │
+│  [85] / [100]               │  ← Number inputs
+│                             │
+│  Date                       │
+│  [Today, Oct 27      ]      │  ← Auto-filled, editable
+│                             │
+│  [────  Add Grade  ────]    │  ← Big button
+│                             │
+└─────────────────────────────┘
+```
+
+**Design details:**
+- Modal has rounded top corners
+- Drag handle to dismiss
+- Form fields: Dark background, white text, green focus state
+- Subject dropdown: Shows emoji + name
+- Score inputs: Side by side, centered
+- Add button: Full width, lime green, bold
+- Keyboard appears for text/number inputs
+
+**Interaction flow:**
+1. Fill subject (required)
+2. Fill assessment name (required)
+3. Fill score (required, validates max ≤ 100)
+4. Date auto-filled but editable
+5. Tap "Add Grade"
+6. **Success animation:** Checkmark ✓, haptic feedback
+7. Modal dismisses with smooth transition
+8. Grade appears in dashboard with slide-in animation
+9. Numbers update with counting animation
+
+**Error states:**
+- Red border + shake animation if required field empty
+- "Score can't exceed maximum" if validation fails
+
+---
+
+## **5. GRADE HISTORY / LIST VIEW**
+
+**Access:** Tap on subject card OR from navigation
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│  [← Back]    Mathematics    │  ← Header
+│                             │
+│  Average: 87.5  ↑           │  ← Quick stat
+│  85th percentile            │
+│                             │
+├─────────────────────────────┤
+│                             │
+│  Mid-Year Exam              │  ← Assessment name
+│  85 / 100                   │  ← Score
+│  Oct 15, 2025               │  ← Date
+│                        [⋮]  │  ← Edit menu
+│                             │
+├─────────────────────────────┤
+│                             │
+│  Quiz 3                     │
+│  92 / 100                   │
+│  Oct 8, 2025                │
+│                        [⋮]  │
+│                             │
+├─────────────────────────────┤
+│  ... more grades ...        │
+└─────────────────────────────┘
+```
+
+**Design details:**
+- List of grade cards, reverse chronological
+- Each card shows assessment, score, date
+- Three-dot menu (⋮) for edit/delete
+- Swipe left to delete (mobile)
+- Pull to refresh
+- Empty state: "No grades yet. Add one to get started!"
+
+**Edit/Delete:**
+- Tap three dots → bottom sheet with options
+- Edit → Opens pre-filled add grade modal
+- Delete → Confirmation prompt with undo option
+
+---
+
+## **6. COHORT COMPARISON (Deep Dive)**
+
+**Access:** Tap on "Your Rank" card from dashboard
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│  [← Back]    Your Rank      │
+│                             │
+│  [School] [Singapore]       │  ← Toggle
+│                             │
+├─────────────────────────────┤
+│                             │
+│      78th Percentile        │  ← Your rank
+│                             │
+│  [Distribution curve/bar    │  ← Visualization
+│   with your dot marked]     │
+│                             │
+│  You: 83.2                  │
+│  Average: 79.5              │  ← Stats
+│  Top 10%: 88.0+             │
+│                             │
+├─────────────────────────────┤
+│                             │
+│  Subject Rankings           │
+│                             │
+│  Math:     85th %ile  ↑     │
+│  Physics:  82nd %ile  →     │
+│  Chemistry: 72nd %ile ↓     │
+│  ...                        │
+│                             │
+└─────────────────────────────┘
+```
+
+**Design details:**
+- Beautiful gradient distribution curve
+- Animated on load
+- Your position highlighted with glow effect
+- Color-coded percentile ranges (red→yellow→green)
+- Subject rankings expandable
+- Smooth scroll between sections
+
+---
+
+## **7. SCHOOL LEADERBOARD**
+
+**Access:** From school stats card or navigation
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│  [← Back]  School Rankings  │
+│                             │
+│  [Your School] vs Singapore │
+│                             │
+├─────────────────────────────┤
+│                             │
+│  🥇 #1  RI         87.2     │  ← School name + avg
+│  🥈 #2  HCI        86.8     │
+│  🥉 #3  NUS High   86.1     │
+│  ⭐ #4  [Your School] 85.3  │  ← Highlighted
+│     #5  VJC        84.9     │
+│     ...                     │
+│                             │
+├─────────────────────────────┤
+│                             │
+│  Top Students (Anonymous)   │
+│                             │
+│  🥇 MathGenius    92.5      │
+│  🥈 StudyGrind    91.8      │
+│  🥉 ChemWizard    90.2      │
+│  ...                        │
+│                             │
+└─────────────────────────────┘
+```
+
+**Design details:**
+- Medal emojis for top 3
+- Your school highlighted in lime green
+- Animated rank changes (if real-time)
+- Filter by subject
+- Anonymous student nicknames only
+
+---
+
+## **8. PROFILE / SETTINGS**
+
+**Access:** Tap profile icon (top left)
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│  [← Back]    Profile        │
+│                             │
+│     [Avatar/Initial]        │  ← Generated avatar
+│     YourNickname            │
+│     [School Name]           │
+│     Sec 3                   │
+│                             │
+├─────────────────────────────┤
+│                             │
+│  Your Stats                 │
+│  Total Grades: 47           │
+│  Member Since: Sep 2025     │
+│  Current Streak: 12 weeks   │
+│                             │
+├─────────────────────────────┤
+│                             │
+│  Settings                   │
+│                             │
+│  • Edit Profile             │
+│  • Notification Settings    │
+│  • Privacy                  │
+│  • Share App               │
+│  • About                    │
+│  • Sign Out                 │
+│                             │
+└─────────────────────────────┘
+```
+
+**Design details:**
+- Clean, simple list
+- Each item has chevron (›) to indicate tap
+- Stats section shows engagement metrics
+- Share app → generates referral link with school code
+
+---
+
+## **9. NAVIGATION**
+
+**Bottom Tab Bar (iOS style):**
+```
+┌─────────────────────────────┐
+│                             │
+│    [Dashboard Icon]         │  ← Home
+│      Dashboard              │
+│                             │
+│    [Trophy Icon]            │  ← Rankings
+│      Rankings               │
+│                             │
+│    [Plus Icon - Big]        │  ← Add Grade (FAB)
+│                             │
+│    [History Icon]           │  ← History
+│      History                │
+│                             │
+│    [Profile Icon]           │  ← Profile
+│      Profile                │
+│                             │
+└─────────────────────────────┘
+```
+
+**Design details:**
+- 5 tabs total
+- Center tab (Add Grade) is elevated FAB
+- Active tab: Lime green
+- Inactive tabs: Gray
+- Icon + label for clarity
+- Smooth transitions between tabs
+
+**Alternative (simpler for MVP):**
+- Just 3 tabs: Dashboard | Add (+) | Profile
+- Access everything else from dashboard cards
+
+---
+
+## **10. ADDITIONAL FEATURES & LOGIC**
+
+### **Target Grade Calculator** (v1.5 feature)
+
+**Access:** From dashboard or as separate tab
+
+**Layout:**
+```
+┌─────────────────────────────┐
+│  Target Calculator          │
+│                             │
+│  I want an overall of:      │
+│  [85]                       │  ← Input target
+│                             │
+│  To reach this, you need:   │
+│                             │
+│  Math:     ✓ Already there  │
+│  Physics:  88 on finals     │
+│  Chemistry: 92 on finals    │
+│                             │
+│  [Calculate]                │
+└─────────────────────────────┘
+
+Notifications Logic
+When to send:
+
+New percentile milestone (e.g., crossed 80th)
+School rank changed
+New students from your school joined
+Weekly summary (Sunday evening)
+Reminder if haven't logged grades in 2 weeks
+
+Opt-in during onboarding:
+
+"Stay updated?" screen with toggle
+Can disable anytime in settings
+
+
+Data Privacy & Anonymous Comparison
+How it works:
+
+Each user gets unique UUID on signup (stored locally)
+Grades are stored in database with UUID, school code, level
+NO names, NO emails stored
+Percentile calculated by comparing all UUIDs with same school/level
+Users see only: their own data + aggregated stats
+Can't see individual grades of others
+
+Opt-in to cohort:
+
+Toggle in settings: "Include my grades in cohort data"
+Default: ON (with explanation during onboarding)
+Can opt out → still see own stats, but no comparison
+
+
+School Code System
+Generation:
+
+Auto-generated from school selection
+Format: RI-2025 or HCI-2025 (School-Year)
+Displayed in profile for sharing
+
+Sharing:
+
+"Invite Friends" button generates shareable link
+Link contains school code
+New user clicks → auto-fills school during onboarding
+
+Validation:
+
+Check if school code matches reasonable school list
+Prevent spam/fake schools
+
+
+Real-time Updates
+Use WebSockets or polling:
+
+When user adds grade → triggers recalculation
+Other users' dashboards update percentiles (if online)
+"Activity feed" shows recent cohort activity
+Rate limit: Update max every 5 seconds to avoid spam
+
+
+Empty States
+No grades yet:
+
+Dashboard shows welcome message
+"Add your first grade to unlock insights"
+Illustration or animation
+
+No cohort data:
+
+"Be the first from your school!"
+"Invite friends to unlock school rankings"
+Show individual stats only
+
+
+11. DESIGN SYSTEM
+Colors (Dark Theme)
+
+Background: #000000 (true black for OLED)
+Cards: #1C1C1E (dark gray)
+Text Primary: #FFFFFF (white)
+Text Secondary: #8E8E93 (gray)
+Accent/Primary: #C7F464 (lime green - Apple Fitness style)
+Success: #30D158 (green)
+Warning: #FF9F0A (orange)
+Error: #FF453A (red)
+Charts: Gradients (purple→cyan, orange→pink)
+
+Typography
+
+Headings: SF Pro Display (or Outfit/Inter for web)
+Body: SF Pro Text
+Weights: Regular (400), Medium (500), Bold (700)
+Sizes:
+
+H1: 32pt (page titles)
+H2: 24pt (card titles)
+Body: 16pt
+Caption: 12pt
+
+
+
+Spacing
+
+Cards: 16px padding
+Between cards: 12px gap
+Screen margins: 20px
+Corner radius: 16px (cards), 12px (buttons), 8px (inputs)
+
+Animations
+
+Transitions: 300ms ease-in-out
+Number counting: 800ms
+Page transitions: Slide (iOS style)
+Micro-interactions: Scale on press (0.95), haptic feedback (for all major buttons)
