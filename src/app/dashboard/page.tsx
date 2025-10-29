@@ -987,20 +987,19 @@ useEffect(() => {
       }
 
       const localUserStr = localStorage.getItem('outrankUser');
-      const localUserPartial: Partial<User> = localUserStr ? JSON.parse(localUserStr) : {
-        nickname: 'Student',
-        school_code: 'RI',
-        school_name: 'Raffles Institution',
-        level: 'sec_4'
-      };
+const localUserPartial: Partial<User> = localUserStr ? JSON.parse(localUserStr) : {
+  school_code: 'RI',
+  school_name: 'Raffles Institution',
+  level: 'sec_4'
+};
 
-      // Ensure required fields for new user
-      const defaultUser: Omit<User, 'id' | 'opted_in_cohort' | 'created_at' | 'updated_at' | 'last_active_at'> = {
-        nickname: localUserPartial.nickname || 'Student',
-        school_code: localUserPartial.school_code || 'RI',
-        school_name: localUserPartial.school_name || 'Raffles Institution',
-        level: localUserPartial.level || 'sec_4'
-      };
+// Ensure required fields for new user
+const defaultUser: Omit<User, 'id' | 'opted_in_cohort' | 'created_at' | 'updated_at' | 'last_active_at'> = {
+  nickname: localUserPartial.nickname,
+  school_code: localUserPartial.school_code || 'RI',
+  school_name: localUserPartial.school_name || 'Raffles Institution',
+  level: localUserPartial.level || 'sec_4'
+};
 
 // Upsert user in DB
 const { data: existingUser, error: fetchError }: { data: User | null; error: PostgrestError | null } = await supabase
