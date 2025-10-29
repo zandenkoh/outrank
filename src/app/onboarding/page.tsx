@@ -220,65 +220,83 @@ export default function OnboardingFlow() {
     }, 300);
   };
 
-  const handleComplete = async () => {
-    setIsSaving(true);
-    setSaveError(null);
+const handleComplete = async () => {
+  setIsSaving(true);
+  setSaveError(null);
 
-    if (!selectedSchool || !selectedLevel) {
-      setSaveError("Please complete the onboarding steps before saving.");
-      setIsSaving(false);
-      return;
-    }
-
-    // Prepare user data
-    const userData = {
-      nickname,
-      school_code: selectedSchool.code,
-      school_name: selectedSchool.name,
-      level: selectedLevel.id,
-      opted_in_cohort: true,
-    };
-    
-    // Save to Supabase
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .insert([userData])
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      // Add the generated ID to the user data for localStorage
-      const fullUserData = { ...userData, id: data.id };
-
-      // Save to localStorage
-      localStorage.setItem('user', JSON.stringify(fullUserData));
-
-      console.log('User data saved successfully:', fullUserData);
-    } catch (error: unknown) {
-      console.error('Error saving user data:', error);
-      if (error instanceof Error) {
-        setSaveError(error.message || 'Failed to save data. Please try again.');
-      } else {
-        setSaveError('Failed to save data. Please try again.');
-      }
-      setIsSaving(false);
-      return;
-    }
-
+  if (!selectedSchool || !selectedLevel || nickname.length < 3) {
+    setSaveError("Please complete all steps with a valid nickname (3-15 chars).");
     setIsSaving(false);
-    
-    // Show success animation
-    setStep(4);
-    
-    // Redirect to dashboard after 2 seconds
-    setTimeout(() => {
-      router.push('/dashboard');
-    }, 2000);
+    return;
+  }
+
+  // Prepare user data (nickname is guaranteed non-empty)
+  const userData = {
+    id: '', // Will be set from Auth session
+    nickname: nickname.trim(), // Explicitly trim and ensure string
+    school_code: selectedSchool.code,
+    school_name: selectedSchool.name,
+    level: selectedLevel.id,
+    opted_in_cohort: true,
   };
+
+  // Step 1: Ensure anonymous sign-in
+  const { data, error: signInError } = await supabase.auth.getSession();
+  let session = data?.session ?? null;
+  if (!session || signInError) {
+    const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
+    if (anonError) {
+      setSaveError(`Sign-in failed: ${anonError.message}`);
+      setIsSaving(false);
+      return;
+    }
+    session = anonData?.session ?? null;
+    if (!session?.user?.id) {
+      setSaveError('Failed to create anonymous account.');
+      setIsSaving(false);
+      return;
+    }
+  }
+
+  // Step 2: Upsert user with Auth id (safe against duplicates)
+  userData.id = session.user.id; // Link to Auth user
+  try {
+    // No need to set timestamps—DB defaults handle created_at/updated_at/last_active_at
+    const { data, error } = await supabase
+      .from('users')
+      .upsert([userData], { onConflict: 'id' }) // Upsert on id conflict
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Insert error:', error);
+      throw error;
+    }
+
+    if (!data) {
+      throw new Error('Failed to save user data.');
+    }
+
+    // Step 3: Save full user to localStorage (consistent key)
+    const fullUserData = { ...userData, created_at: data.created_at }; // Include any DB-generated fields
+    localStorage.setItem('outrankUser', JSON.stringify(fullUserData));
+
+    console.log('User saved successfully:', fullUserData);
+  } catch (error: unknown) {
+    console.error('Error saving user data:', error);
+    setSaveError(error instanceof Error ? error.message : 'Failed to save. Please retry.');
+    setIsSaving(false);
+    return;
+  }
+
+  setIsSaving(false);
+
+  // Proceed to success and redirect
+  setStep(4);
+  setTimeout(() => {
+    router.push('/dashboard');
+  }, 2000);
+};
 
   const canProceed = () => {
     if (step === 1) return selectedSchool !== null;

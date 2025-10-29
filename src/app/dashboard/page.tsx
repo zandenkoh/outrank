@@ -993,9 +993,10 @@ const localUserPartial: Partial<User> = localUserStr ? JSON.parse(localUserStr) 
   level: 'sec_4'
 };
 
-// Ensure required fields for new user
+const fallbackNickname = localUserPartial.nickname || `Anon${Math.random().toString(36).slice(2, 7).toUpperCase()}`; // e.g., "ANONX7K2P"
+
 const defaultUser: Omit<User, 'id' | 'opted_in_cohort' | 'created_at' | 'updated_at' | 'last_active_at'> = {
-  nickname: localUserPartial.nickname,
+  nickname: fallbackNickname,
   school_code: localUserPartial.school_code || 'RI',
   school_name: localUserPartial.school_name || 'Raffles Institution',
   level: localUserPartial.level || 'sec_4'

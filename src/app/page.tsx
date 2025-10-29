@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TrendingUp, Award, Users, ArrowRight, Menu, X, XCircle, CheckCircle, BookOpen, Shield, Mail, Instagram, Twitter, School, GraduationCap, Globe } from 'lucide-react';
 
 type ModalType = 'features' | 'schools' | 'about' | 'pricing' | 'privacy' | 'terms' | 'contact' | 'instagram' | 'twitter' | 'faqs';
@@ -17,14 +17,14 @@ const SCHOOLS = {
     { code: 'HCI', name: 'Hwa Chong Institution' },
     { code: 'ACS-I', name: 'Anglo-Chinese School (Independent)' },
     { code: 'NUSH', name: 'NUS High School of Math and Science' },
-    { code: 'SJI', name: "St. Joseph&apos;s Institution" },
-    { code: 'SCGS', name: "Singapore Chinese Girls&apos; School" },
-    { code: 'MGS', name: "Methodist Girls&apos; School" },
+    { code: 'SJI', name: "St. Joseph's Institution" },
+    { code: 'SCGS', name: "Singapore Chinese Girls' School" },
+    { code: 'MGS', name: "Methodist Girls' School" },
     { code: 'CHIJ-SN', name: 'CHIJ St. Nicholas Girls School' },
     { code: 'DMSS', name: 'Dunman High School' },
     { code: 'VS', name: 'Victoria School' },
     { code: 'NYGH', name: 'Nanyang Girls High School' },
-    { code: 'RGS', name: "Raffles Girls&apos; School" },
+    { code: 'RGS', name: "Raffles Girls' School" },
     { code: 'TKGS', name: 'Tanjong Katong Girls School' },
     { code: 'CHIJ-KCP', name: 'CHIJ Katong Convent' },
     { code: 'CEDAR', name: 'Cedar Girls Secondary School' },
@@ -37,10 +37,10 @@ const SCHOOLS = {
     { code: 'PLMGSS', name: 'Paya Lebar Methodist Girls School' },
     { code: 'RVHS', name: 'River Valley High School' },
     { code: 'CHIJ-OLQP', name: 'CHIJ Our Lady Queen of Peace' },
-    { code: 'CHIJ-SJC', name: "CHIJ St. Joseph&apos;s Convent" },
+    { code: 'CHIJ-SJC', name: "CHIJ St. Joseph's Convent" },
     { code: 'CHIJ-TP', name: 'CHIJ Toa Payoh' },
     { code: 'CHIJ-KC', name: 'CHIJ Kellock' },
-    { code: 'SNGS', name: "Singapore Nanyang Girls&apos; School" },
+    { code: 'SNGS', name: "Singapore Nanyang Girls' School" },
     { code: 'ACSBR', name: 'Anglo-Chinese School (Barker Road)' },
     { code: 'AI', name: 'Anderson Secondary School' },
     { code: 'BTSS', name: 'Beatty Secondary School' },
@@ -97,12 +97,12 @@ const SCHOOLS = {
     { code: 'SSSS', name: 'Serangoon Secondary School' },
     { code: 'SLSS', name: 'Si Ling Secondary School' },
     { code: 'SPSS', name: 'Springfield Secondary School' },
-    { code: 'SASS-2', name: "St. Andrew&apos;s Secondary School" },
-    { code: 'SACSS', name: "St. Anthony&apos;s Canossian Secondary School" },
-    { code: 'SGSS-2', name: "St. Gabriel&apos;s Secondary School" },
-    { code: 'SHSS', name: "St. Hilda&apos;s Secondary School" },
-    { code: 'SMGS', name: "St. Margaret&apos;s Secondary School" },
-    { code: 'SPSS-2', name: "St. Patrick&apos;s School" },
+    { code: 'SASS-2', name: "St. Andrew's Secondary School" },
+    { code: 'SACSS', name: "St. Anthony's Canossian Secondary School" },
+    { code: 'SGSS-2', name: "St. Gabriel's Secondary School" },
+    { code: 'SHSS', name: "St. Hilda's Secondary School" },
+    { code: 'SMGS', name: "St. Margaret's Secondary School" },
+    { code: 'SPSS-2', name: "St. Patrick's School" },
     { code: 'TPSS', name: 'Tampines Secondary School' },
     { code: 'TNSS', name: 'Tanglin Secondary School' },
     { code: 'TKSS-2', name: 'Tanjong Katong Secondary School' },
@@ -124,7 +124,7 @@ const SCHOOLS = {
     { code: 'TJC', name: 'Temasek Junior College' },
     { code: 'DHS-JC', name: 'Dunman High School (JC)' },
     { code: 'NYJC', name: 'Nanyang Junior College' },
-    { code: 'SAJC', name: "St. Andrew&apos;s Junior College" },
+    { code: 'SAJC', name: "St. Andrew's Junior College" },
     { code: 'CJC', name: 'Catholic Junior College' },
     { code: 'TPJC', name: 'Tampines Junior College' },
     { code: 'JJC', name: 'Jurong Junior College' },
@@ -147,7 +147,20 @@ const SCHOOLS = {
   ]
 };
 
+// Vibration utility
+const vibrateOnClick = (pattern: number | number[] = 50) => {
+  if ('vibrate' in navigator && navigator.vibrate) {
+    navigator.vibrate(pattern);
+  }
+};
+
 function Modal({ type, onClose, setActiveModal }: ModalProps) {
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    modalRef.current?.focus();
+  }, [type]);
+
   const modalContent: Record<ModalType, React.ReactElement> = {
     features: (
       <div className="p-4 md:p-6 lg:p-8 space-y-4 md:space-y-6 lg:space-y-8">
@@ -190,7 +203,7 @@ function Modal({ type, onClose, setActiveModal }: ModalProps) {
       </div>
     ),
     schools: (
-      <div className="p-4 md:p-6 lg:p-8 space-y-4 md:space-y-6 lg:space-y-8">
+      <div className="p-4 md:p-6 lg:p-8 space-y-4 md:space-y-6 lg:space-y-8 max-h-[80vh] overflow-y-auto">
         <h2 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold mb-4 md:mb-6 lg:mb-8 flex items-center gap-2 md:gap-3 lg:gap-4 justify-center">
           <Users className="text-cyan-400 size-6 md:size-7 lg:size-8 xl:size-12" />
           Our Schools
@@ -286,7 +299,13 @@ function Modal({ type, onClose, setActiveModal }: ModalProps) {
               <li className="flex items-center gap-1.5 md:gap-2 lg:gap-3"><CheckCircle className="text-green-400 w-3.5 h-3.5 md:w-4 md:h-4 lg:w-5 lg:h-5" /> Community forums & collaboration</li>
               <li className="flex items-center gap-1.5 md:gap-2 lg:gap-3"><CheckCircle className="text-green-400 w-3.5 h-3.5 md:w-4 md:h-4 lg:w-5 lg:h-5" /> Unlimited exports & insights</li>
             </ul>
-            <button className="w-full px-3 md:px-4 lg:px-6 py-2.5 md:py-3 lg:py-4 bg-lime-400 text-black font-bold rounded-lg md:rounded-xl hover:bg-lime-300 transition-all relative z-10 text-xs md:text-sm lg:text-base">Get Started Free</button>
+            <button 
+              onClick={() => window.location.href = '/onboarding'}
+              className="w-full px-3 md:px-4 lg:px-6 py-2.5 md:py-3 lg:py-4 bg-lime-400 text-black font-bold rounded-lg md:rounded-xl hover:bg-lime-300 transition-all relative z-10 text-xs md:text-sm lg:text-base"
+              onMouseDown={() => vibrateOnClick()}
+            >
+              Get Started Free
+            </button>
           </div>
         </div>
       </div>
@@ -351,11 +370,11 @@ function Modal({ type, onClose, setActiveModal }: ModalProps) {
             <Mail className="text-lime-400 size-5 md:size-6 lg:size-7 xl:size-8" />
             <span className="text-base md:text-lg lg:text-2xl font-bold">hello@outrank.sg</span>
           </div>
-          <form className="space-y-3 md:space-y-4">
-            <input type="text" placeholder="Your Name" className="w-full p-2.5 md:p-3 lg:p-4 bg-slate-700 border border-white/10 rounded-lg md:rounded-xl text-white placeholder-gray-400 focus:border-lime-400 focus:outline-none transition-colors text-xs md:text-sm lg:text-base" />
-            <input type="email" placeholder="Your Email" className="w-full p-2.5 md:p-3 lg:p-4 bg-slate-700 border border-white/10 rounded-lg md:rounded-xl text-white placeholder-gray-400 focus:border-lime-400 focus:outline-none transition-colors text-xs md:text-sm lg:text-base" />
-            <textarea placeholder="Your Message" rows={3} className="w-full p-2.5 md:p-3 lg:p-4 bg-slate-700 border border-white/10 rounded-lg md:rounded-xl text-white placeholder-gray-400 focus:border-lime-400 focus:outline-none transition-colors text-xs md:text-sm lg:text-base" />
-            <button type="submit" className="w-full px-4 md:px-6 lg:px-8 py-2.5 md:py-3 lg:py-4 bg-lime-400 text-black font-bold rounded-lg md:rounded-xl hover:bg-lime-300 transition-all text-xs md:text-sm lg:text-base">Send Message</button>
+          <form className="space-y-3 md:space-y-4" onSubmit={(e) => { e.preventDefault(); /* Handle form */ }}>
+            <input type="text" placeholder="Your Name" className="w-full p-2.5 md:p-3 lg:p-4 bg-slate-700 border border-white/10 rounded-lg md:rounded-xl text-white placeholder-gray-400 focus:border-lime-400 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all text-xs md:text-sm lg:text-base" aria-label="Your Name" />
+            <input type="email" placeholder="Your Email" className="w-full p-2.5 md:p-3 lg:p-4 bg-slate-700 border border-white/10 rounded-lg md:rounded-xl text-white placeholder-gray-400 focus:border-lime-400 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all text-xs md:text-sm lg:text-base" aria-label="Your Email" />
+            <textarea placeholder="Your Message" rows={3} className="w-full p-2.5 md:p-3 lg:p-4 bg-slate-700 border border-white/10 rounded-lg md:rounded-xl text-white placeholder-gray-400 focus:border-lime-400 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all text-xs md:text-sm lg:text-base" aria-label="Your Message" />
+            <button type="submit" className="w-full px-4 md:px-6 lg:px-8 py-2.5 md:py-3 lg:py-4 bg-lime-400 text-black font-bold rounded-lg md:rounded-xl hover:bg-lime-300 transition-all text-xs md:text-sm lg:text-base" onMouseDown={() => vibrateOnClick()}>Send Message</button>
           </form>
         </div>
         <p className="text-gray-400 text-center text-xs md:text-sm lg:text-base">Response within 24 hours. We&apos;re here to help!</p>
@@ -434,14 +453,23 @@ function Modal({ type, onClose, setActiveModal }: ModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md" onClick={onClose}>
+    <div 
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md" 
+      onClick={onClose} 
+      role="dialog" 
+      aria-modal="true" 
+      aria-labelledby={`${type}-title`}
+    >
       <div 
-        className="bg-gradient-to-b from-slate-900 via-slate-800 to-black border border-white/20 rounded-none md:rounded-2xl lg:rounded-3xl w-full h-full overflow-y-auto relative shadow-2xl max-w-4xl mx-auto" 
+        ref={modalRef}
+        tabIndex={-1}
+        className="bg-gradient-to-b from-slate-900 via-slate-800 to-black border border-white/20 rounded-none md:rounded-2xl lg:rounded-3xl w-full h-full md:max-h-[90vh] overflow-y-auto relative shadow-2xl max-w-4xl mx-auto" 
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
           className="absolute top-3 md:top-4 right-3 md:right-4 z-10 text-gray-400 hover:text-white transition-all p-1.5 md:p-2 rounded-full hover:bg-white/10"
+          aria-label="Close modal"
         >
           <X className="size-5 md:size-6" />
         </button>
@@ -459,6 +487,7 @@ export default function LandingPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeModal, setActiveModal] = useState<ModalType | null>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
 
   const openModal = (type: ModalType) => {
     setActiveModal(type);
@@ -494,13 +523,14 @@ export default function LandingPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Handle scroll
+  // Handle scroll with intersection observer for better perf
   useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 50);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    const observer = new IntersectionObserver(
+      ([entry]) => setScrolled(!entry.isIntersecting),
+      { threshold: 0, rootMargin: '-100px 0px 0px 0px' }
+    );
+    if (headerRef.current) observer.observe(headerRef.current);
+    return () => observer.disconnect();
   }, []);
 
   // Close modal on escape
@@ -533,12 +563,17 @@ export default function LandingPage() {
     "Collaborative project shared insights across classes"
   ];
 
+  const handleGetStarted = (e: React.MouseEvent) => {
+    vibrateOnClick([100, 30, 50]);
+    window.location.href = '/onboarding';
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-white overflow-x-hidden">
       {activeModal && <Modal type={activeModal} onClose={closeModal} setActiveModal={setActiveModal} />}
 
       {/* Header */}
-      <header className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
+      <header ref={headerRef} className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
         scrolled ? 'bg-black/90 backdrop-blur-xl border-b border-white/10 shadow-lg' : 'bg-transparent'
       }`}>
         <div className="max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-3 md:py-4 lg:py-5 flex items-center justify-between">
@@ -548,14 +583,15 @@ export default function LandingPage() {
           
           {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-6 lg:gap-8">
-            <button onClick={() => openModal('features')} className="text-gray-300 hover:text-white transition-all hover:scale-105 text-sm lg:text-base">Features</button>
-            <button onClick={() => openModal('schools')} className="text-gray-300 hover:text-white transition-all hover:scale-105 text-sm lg:text-base">Schools</button>
-            <button onClick={() => openModal('about')} className="text-gray-300 hover:text-white transition-all hover:scale-105 text-sm lg:text-base">About</button>
-            <button onClick={() => openModal('pricing')} className="text-gray-300 hover:text-white transition-all hover:scale-105 text-sm lg:text-base">Pricing</button>
-            <button onClick={() => openModal('faqs')} className="text-gray-300 hover:text-white transition-all hover:scale-105 text-sm lg:text-base">FAQs</button>
+            <button onClick={() => openModal('features')} className="text-gray-300 hover:text-white transition-all hover:scale-105 text-sm lg:text-base" aria-label="View Features">Features</button>
+            <button onClick={() => openModal('schools')} className="text-gray-300 hover:text-white transition-all hover:scale-105 text-sm lg:text-base" aria-label="View Schools">Schools</button>
+            <button onClick={() => openModal('about')} className="text-gray-300 hover:text-white transition-all hover:scale-105 text-sm lg:text-base" aria-label="About Us">About</button>
+            <button onClick={() => openModal('pricing')} className="text-gray-300 hover:text-white transition-all hover:scale-105 text-sm lg:text-base" aria-label="View Pricing">Pricing</button>
+            <button onClick={() => openModal('faqs')} className="text-gray-300 hover:text-white transition-all hover:scale-105 text-sm lg:text-base" aria-label="View FAQs">FAQs</button>
             <button 
-              onClick={() => window.location.href = '/onboarding'}
+              onClick={handleGetStarted}
               className="px-6 md:px-8 lg:px-10 py-2 md:py-3 lg:py-4 bg-gradient-to-r from-lime-400 to-emerald-400 text-black font-bold rounded-full hover:from-lime-300 hover:to-emerald-300 transition-all hover:scale-105 shadow-lg text-sm lg:text-base"
+              aria-label="Get Started with Outrank"
             >
               Get Started
             </button>
@@ -564,24 +600,27 @@ export default function LandingPage() {
           {/* Mobile Menu Button */}
           <button 
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="md:hidden text-white p-2 md:p-2.5 lg:p-3 rounded-full hover:bg-white/10 transition-colors"
+            className="md:hidden text-white p-2 rounded-full hover:bg-white/10 transition-colors"
+            aria-label="Toggle mobile menu"
+            aria-expanded={isMenuOpen}
           >
-            {isMenuOpen ? <X size={24} className="md:size-28 lg:size-32" /> : <Menu size={24} className="md:size-28 lg:size-32" />}
+            {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
 
         {/* Mobile Menu */}
         {isMenuOpen && (
-          <div className="md:hidden bg-black/95 backdrop-blur-xl border-t border-white/10">
-            <nav className="flex flex-col px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8 gap-3 md:gap-4 lg:gap-5">
-              <button onClick={() => openModal('features')} className="text-gray-300 hover:text-white py-2 md:py-3 transition-colors text-sm lg:text-base">Features</button>
-              <button onClick={() => openModal('schools')} className="text-gray-300 hover:text-white py-2 md:py-3 transition-colors text-sm lg:text-base">Schools</button>
-              <button onClick={() => openModal('about')} className="text-gray-300 hover:text-white py-2 md:py-3 transition-colors text-sm lg:text-base">About</button>
-              <button onClick={() => openModal('pricing')} className="text-gray-300 hover:text-white py-2 md:py-3 transition-colors text-sm lg:text-base">Pricing</button>
-              <button onClick={() => openModal('faqs')} className="text-gray-300 hover:text-white py-2 md:py-3 transition-colors text-sm lg:text-base">FAQs</button>
+          <div className="md:hidden bg-black/95 backdrop-blur-xl border-t border-white/10 animate-in slide-in-from-top-2 duration-300">
+            <nav className="flex flex-col px-4 py-4 gap-3">
+              <button onClick={() => openModal('features')} className="text-gray-300 hover:text-white py-2 transition-colors text-sm">Features</button>
+              <button onClick={() => openModal('schools')} className="text-gray-300 hover:text-white py-2 transition-colors text-sm">Schools</button>
+              <button onClick={() => openModal('about')} className="text-gray-300 hover:text-white py-2 transition-colors text-sm">About</button>
+              <button onClick={() => openModal('pricing')} className="text-gray-300 hover:text-white py-2 transition-colors text-sm">Pricing</button>
+              <button onClick={() => openModal('faqs')} className="text-gray-300 hover:text-white py-2 transition-colors text-sm">FAQs</button>
               <button 
-                onClick={() => window.location.href = '/onboarding'}
-                className="px-6 md:px-8 lg:px-10 py-3 md:py-4 lg:py-5 bg-gradient-to-r from-lime-400 to-emerald-400 text-black font-bold rounded-full hover:from-lime-300 hover:to-emerald-300 transition-all text-center text-sm lg:text-base mt-3"
+                onClick={handleGetStarted}
+                className="px-6 py-3 bg-gradient-to-r from-lime-400 to-emerald-400 text-black font-bold rounded-full hover:from-lime-300 hover:to-emerald-300 transition-all text-center text-sm mt-3"
+                aria-label="Get Started with Outrank"
               >
                 Get Started
               </button>
@@ -620,8 +659,9 @@ export default function LandingPage() {
           </div>
 
           <button 
-            onClick={() => window.location.href = '/onboarding'}
+            onClick={handleGetStarted}
             className="group relative px-8 md:px-10 lg:px-12 xl:px-16 py-4 md:py-5 lg:py-6 bg-gradient-to-r from-lime-400 via-emerald-400 to-cyan-400 text-black text-base md:text-lg lg:text-xl font-black rounded-full hover:scale-105 transition-all shadow-2xl shadow-lime-500/25 animate-fade-in-up animation-delay-600 inline-flex items-center gap-3 md:gap-4 lg:gap-5 overflow-hidden w-full sm:w-auto justify-center"
+            aria-label="Launch Outrank App"
           >
             <span>Launch App</span>
             <ArrowRight size={24} className="md:size-28 lg:size-32 xl:size-36 group-hover:translate-x-2 transition-transform" />
@@ -647,6 +687,10 @@ export default function LandingPage() {
             <div 
               className="group bg-gradient-to-br from-slate-900/50 to-slate-950/50 border border-white/10 rounded-xl md:rounded-2xl p-4 md:p-6 lg:p-8 xl:p-10 hover:border-lime-400/40 transition-all hover:scale-105 cursor-pointer backdrop-blur-sm" 
               onClick={() => openModal('features')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openModal('features'); }}
+              aria-label="Explore Smart Dashboard"
             >
               <div className="w-16 h-16 md:w-20 lg:w-24 xl:w-28 flex items-center justify-center mb-4 md:mb-6 lg:mb-8 group-hover:bg-lime-400/20 transition-all rounded-xl md:rounded-2xl">
                 <TrendingUp size={28} className="md:size-32 lg:size-36 xl:size-40 text-lime-400" />
@@ -671,6 +715,10 @@ export default function LandingPage() {
             <div 
               className="group bg-gradient-to-br from-slate-900/50 to-slate-950/50 border border-white/10 rounded-xl md:rounded-2xl p-4 md:p-6 lg:p-8 xl:p-10 hover:border-purple-400/40 transition-all hover:scale-105 cursor-pointer backdrop-blur-sm relative" 
               onClick={() => openModal('features')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openModal('features'); }}
+              aria-label="Explore Percentile Power"
             >
               <div className="w-16 h-16 md:w-20 lg:w-24 xl:w-28 flex items-center justify-center mb-4 md:mb-6 lg:mb-8 group-hover:bg-purple-400/20 transition-all rounded-xl md:rounded-2xl">
                 <Award size={28} className="md:size-32 lg:size-36 xl:size-40 text-purple-400" />
@@ -695,13 +743,17 @@ export default function LandingPage() {
             <div 
               className="group bg-gradient-to-br from-slate-900/50 to-slate-950/50 border border-white/10 rounded-xl md:rounded-2xl p-4 md:p-6 lg:p-8 xl:p-10 hover:border-cyan-400/40 transition-all hover:scale-105 cursor-pointer backdrop-blur-sm" 
               onClick={() => openModal('schools')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openModal('schools'); }}
+              aria-label="Explore School Sync"
             >
               <div className="w-16 h-16 md:w-20 lg:w-24 xl:w-28 flex items-center justify-center mb-4 md:mb-6 lg:mb-8 group-hover:bg-cyan-400/20 transition-all rounded-xl md:rounded-2xl">
                 <Users size={28} className="md:size-32 lg:size-36 xl:size-40 text-cyan-400" />
               </div>
               <h3 className="text-xl md:text-2xl lg:text-3xl xl:text-4xl font-bold mb-3 md:mb-4 lg:mb-6">School Sync</h3>
               <p className="text-gray-300 mb-4 md:mb-6 lg:mb-8 text-sm md:text-base lg:text-lg xl:text-xl">
-                Join your school&apos;s network and benchmark against familiar faces.
+                Join your school's network and benchmark against familiar faces.
               </p>
               <div className="bg-black/30 rounded-xl md:rounded-2xl p-3 md:p-4 lg:p-6 border border-white/5 space-y-2 md:space-y-3 lg:space-y-4">
                 <div className="flex items-center justify-between text-base md:text-lg lg:text-xl font-bold text-cyan-400">
@@ -724,10 +776,14 @@ export default function LandingPage() {
           <h2 
             className="text-3xl md:text-5xl lg:text-6xl xl:text-7xl 2xl:text-8xl font-black mb-4 md:mb-6 lg:mb-8 cursor-pointer hover:underline transition-all" 
             onClick={() => openModal('schools')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openModal('schools'); }}
+            aria-label="View Thriving Communities"
           >
             Thriving Communities
           </h2>
-          <p className="text-lg md:text-xl lg:text-2xl xl:text-3xl text-gray-300">Real stories, real progress from Singapore&apos;s best.</p>
+          <p className="text-lg md:text-xl lg:text-2xl xl:text-3xl text-gray-300">Real stories, real progress from Singapore's best.</p>
         </div>
 
         <div className="space-y-8 md:space-y-10 lg:space-y-12 xl:space-y-16">
@@ -781,7 +837,7 @@ export default function LandingPage() {
       <footer id="about" className="py-12 md:py-16 lg:py-20 xl:py-24 px-4 md:px-6 lg:px-8 bg-black/50 border-t border-white/10 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-8 lg:gap-12 mb-10 md:mb-14 lg:mb-18">
-            <div onClick={() => openModal('about')} className="cursor-pointer md:col-span-1">
+            <div onClick={() => openModal('about')} className="cursor-pointer md:col-span-1" role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openModal('about'); }} aria-label="About Outrank">
               <div className="text-2xl md:text-3xl lg:text-4xl font-black bg-gradient-to-r from-lime-400 to-emerald-400 bg-clip-text text-transparent mb-3 md:mb-4 lg:mb-6">
                 Outrank
               </div>
@@ -852,6 +908,13 @@ export default function LandingPage() {
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          *, *::before, *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+          }
         }
       `}</style>
     </div>

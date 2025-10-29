@@ -359,14 +359,14 @@ const GradeItem: React.FC<GradeItemProps> = ({ grade, onClick, onEdit, onDelete,
                 {grade.subject.charAt(0).toUpperCase() + grade.subject.slice(1)}
               </p>
             </div>
-            <p className="text-sm font-medium text-gray-300">{grade.assessment_name}</p>
+            <p className="text-sm text-left font-medium text-gray-300">{grade.assessment_name}</p>
           </div>
           <p className="text-xs text-gray-500 mt-1 ml-[calc(2.5rem+0.75rem)]">
             {formatShortDate(grade.assessment_date)}
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="text-right">
+          <div className="text-left">
             <p className="text-lg font-bold text-white">{grade.score}/{grade.max_score}</p>
             <p className="text-sm text-lime-400">{(grade.percentage || 0).toFixed(1)}%</p>
           </div>
@@ -394,10 +394,7 @@ const EmptyHistoryState: React.FC<EmptyHistoryStateProps> = ({ onAddGrade }) => 
     animate={{ opacity: 1, scale: 1 }}
     transition={{ duration: 0.6, ease: 'easeOut' }}
   >
-    <motion.div 
-      animate={{ rotate: [0, 360] }}
-      transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-    >
+    <motion.div>
       <Calendar className="text-6xl mb-4 text-gray-600" />
     </motion.div>
     <h3 className="text-2xl font-bold text-white mb-3">No Grades Yet</h3>
