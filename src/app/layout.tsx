@@ -5,7 +5,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'AcadShare - Student Academic Analytics',
+  title: 'Outrank',
   description: 'Track and analyze your academic performance in Singapore',
 };
 
