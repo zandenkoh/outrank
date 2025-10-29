@@ -171,13 +171,13 @@ export default function OnboardingFlow() {
   
   // Form data
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSchool, setSelectedSchool] = useState(null);
+  const [selectedSchool, setSelectedSchool] = useState<{ code: string; name: string } | null>(null);
   const [nickname, setNickname] = useState('');
-  const [selectedLevel, setSelectedLevel] = useState(null);
+  const [selectedLevel, setSelectedLevel] = useState<{ id: string; label: string; type: string } | null>(null);
   
   // UI state
   const [isAnimating, setIsAnimating] = useState(false);
-  const [saveError, setSaveError] = useState(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // Filter schools based on search
@@ -224,6 +224,12 @@ export default function OnboardingFlow() {
     setIsSaving(true);
     setSaveError(null);
 
+    if (!selectedSchool || !selectedLevel) {
+      setSaveError("Please complete the onboarding steps before saving.");
+      setIsSaving(false);
+      return;
+    }
+
     // Prepare user data
     const userData = {
       nickname,
@@ -252,9 +258,13 @@ export default function OnboardingFlow() {
       localStorage.setItem('user', JSON.stringify(fullUserData));
 
       console.log('User data saved successfully:', fullUserData);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error saving user data:', error);
-      setSaveError(error.message || 'Failed to save data. Please try again.');
+      if (error instanceof Error) {
+        setSaveError(error.message || 'Failed to save data. Please try again.');
+      } else {
+        setSaveError('Failed to save data. Please try again.');
+      }
       setIsSaving(false);
       return;
     }
@@ -429,7 +439,7 @@ export default function OnboardingFlow() {
               <div className="text-center mb-6">
                 <div className="text-4xl mb-3">✨</div>
                 <h1 className="text-3xl font-bold mb-2">Choose your nickname</h1>
-                <p className="text-gray-400">How you'll appear to others (anonymous)</p>
+                <p className="text-gray-400">How you&apos;ll appear to others (anonymous)</p>
               </div>
 
               {/* Nickname input */}
@@ -547,7 +557,7 @@ export default function OnboardingFlow() {
                   </>
                 ) : (
                   <>
-                    Let's go!
+                    Let&apos;s go!
                     <Sparkles size={20} />
                   </>
                 )}
@@ -560,7 +570,7 @@ export default function OnboardingFlow() {
             <div className="text-center space-y-6 animate-fadeIn">
               <div className="text-8xl animate-bounce mb-4">🎉</div>
               <h1 className="text-4xl font-bold bg-gradient-to-r from-lime-400 to-emerald-400 bg-clip-text text-transparent">
-                You're all set!
+                You&apos;re all set!
               </h1>
               <p className="text-lg text-gray-400">Welcome to Outrank, {nickname}!</p>
               <div className="flex items-center justify-center gap-2 text-gray-500 text-sm">

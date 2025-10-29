@@ -5,7 +5,7 @@ import { ChevronLeft, User, School, GraduationCap, ShieldCheck, ShieldOff, Save,
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -660,12 +660,18 @@ const Profile: React.FC = () => {
 
   const loadData = useCallback(async (): Promise<void> => {
     try {
-      let { data: { session } } = await supabase.auth.getSession();
+      // getSession may return data?.session === null, so guard explicitly
+      const sessionResp = await supabase.auth.getSession();
+      let session = sessionResp.data?.session ?? null;
 
       if (!session) {
         const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
         if (anonError) throw anonError;
-        session = anonData.session;
+        session = anonData?.session ?? null;
+      }
+
+      if (!session || !session.user || !session.user.id) {
+        throw new Error('No active session available');
       }
 
       const localUserStr = localStorage.getItem('outrankUser');
@@ -677,25 +683,25 @@ const Profile: React.FC = () => {
       };
 
       // Fetch or upsert user
-      let { data: existingUser, error: fetchError } = await supabase
+      const { data: existingUser, error: fetchError } = await supabase
         .from('users')
         .select('*')
         .eq('id', session.user.id)
         .single();
 
       let dbUser: User;
-      if (fetchError && fetchError.code === 'PGRST116') {
+      if (fetchError && (fetchError as PostgrestError).code === 'PGRST116') {
         // Generate avatar seed if needed
         const avatarSeed = (localUser as Partial<User>).avatar_seed || generateAvatarSeed();
         dbUser = {
           id: session.user.id,
-          ...localUser,
+          ...(localUser as Partial<User>),
           nickname: (localUser as Partial<User>).nickname || 'Student',
           school_code: (localUser as Partial<User>).school_code || 'RI',
           school_name: (localUser as Partial<User>).school_name || 'Raffles Institution',
           level: (localUser as Partial<User>).level || 'sec_4',
           avatar_seed: avatarSeed,
-          opted_in_cohort: (localUser as Partial<User>).opted_in_cohort !== undefined ? (localUser as Partial<User>).opted_in_cohort : true,
+          opted_in_cohort: (localUser as Partial<User>).opted_in_cohort ?? true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           last_active_at: new Date().toISOString()
@@ -705,7 +711,7 @@ const Profile: React.FC = () => {
           .insert([dbUser]);
         if (insertError) throw insertError;
       } else if (existingUser) {
-        dbUser = existingUser;
+        dbUser = existingUser as User;
         // Sync local changes
         const updates: Partial<User> = {};
         if ((localUser as Partial<User>).nickname && (localUser as Partial<User>).nickname !== dbUser.nickname) updates.nickname = (localUser as Partial<User>).nickname;
@@ -726,12 +732,14 @@ const Profile: React.FC = () => {
             .update(updates)
             .eq('id', session.user.id);
           if (updateError) console.error('Update error:', updateError);
-          // Refetch after update
-          ({ data: dbUser } = await supabase
+          // Refetch after update and ensure non-null
+          const { data: fetchedDbUser } = await supabase
             .from('users')
             .select('*')
             .eq('id', session.user.id)
-            .single());
+            .single();
+          if (!fetchedDbUser) throw new Error('Failed to refetch user after update');
+          dbUser = fetchedDbUser as User;
         }
       } else {
         throw new Error('User fetch failed');
@@ -771,7 +779,7 @@ const Profile: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [formData.sessions]);
 
   const loadStats = useCallback(async (): Promise<void> => {
     if (!user) return;
@@ -950,8 +958,9 @@ const Profile: React.FC = () => {
         .eq('nickname', formData.nickname)
         .neq('id', user!.id);
 
-      if (nickCount > 0) {
+      if ((nickCount ?? 0) > 0) {
         setErrors({ nickname: 'Nickname already taken' });
+        setSaving(false);
         return;
       }
 

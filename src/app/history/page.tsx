@@ -649,7 +649,7 @@ const AssessmentDetailModal: React.FC<AssessmentDetailModalProps> = ({ isOpen, g
 
   const safeAvg = Math.min(100, Math.max(0, subjectAvg));
   const gradePercentage = grade.percentage || 0;
-  const trend = subjectGrades.length > 1 ? (subjectGrades[0].percentage! - subjectGrades[1]?.percentage || 0) : 0; // Most recent trend
+  const trend = subjectGrades.length > 1 ? ((subjectGrades[0].percentage ?? 0) - (subjectGrades[1]?.percentage ?? 0)) : 0; // Most recent trend
   const safeTrend = trend;
 
   // Placeholder percentile
@@ -1298,18 +1298,25 @@ const History: React.FC = () => {
 
   const loadUserAndGrades = useCallback(async () => {
     try {
-      let { data: { session } } = await supabase.auth.getSession();
+      const getSessionRes = await supabase.auth.getSession();
+      let session = getSessionRes?.data?.session ?? null;
 
       if (!session) {
         const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
         if (anonError) throw anonError;
-        session = anonData.session;
+        session = anonData?.session ?? null;
       }
+
+      if (!session || !session.user) {
+        throw new Error('Unable to obtain a valid session');
+      }
+
+      const userId = session.user.id;
 
       const { data: dbUser, error: userError } = await supabase
         .from('users')
         .select('*')
-        .eq('id', session.user.id)
+        .eq('id', userId)
         .single();
 
       if (userError) throw userError;
@@ -1318,7 +1325,7 @@ const History: React.FC = () => {
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert([{
-            id: session.user.id,
+            id: userId,
             nickname: 'Student',
             school_code: 'DEMO',
             school_name: 'Demo School',
@@ -1335,7 +1342,7 @@ const History: React.FC = () => {
       const { data: gradesData, error } = await supabase
         .from('grades')
         .select('*')
-        .eq('user_id', session.user.id)
+        .eq('user_id', userId)
         .order('assessment_date', { ascending: false });
 
       if (error) throw error;
@@ -1468,11 +1475,15 @@ const History: React.FC = () => {
   };
 
   const handleModalClose = useCallback((type: 'year' | 'term' | 'subject' | 'assessment'): void => {
-    const setters: Record<string, ((val: any) => void) | undefined> = {
-      year: setSelectedYear,
-      term: setSelectedTermData,
-      subject: setSelectedSubjectData,
-      assessment: setSelectedGrade,
+    type ModalType = 'year' | 'term' | 'subject' | 'assessment';
+    // union of all possible selected data shapes accepted by setters
+    type ModalData = SelectedYearData | SelectedTermData | SubjectData | SelectedGradeData | null;
+
+    const setters: Record<ModalType, ((val: ModalData) => void) | undefined> = {
+      year: (v) => setSelectedYear(v as SelectedYearData | null),
+      term: (v) => setSelectedTermData(v as SelectedTermData | null),
+      subject: (v) => setSelectedSubjectData(v as SubjectData | null),
+      assessment: (v) => setSelectedGrade(v as SelectedGradeData | null),
     };
     setters[type]?.(null);
 
@@ -1482,14 +1493,14 @@ const History: React.FC = () => {
       const newStack = [...prev];
       const popped = newStack.pop();
       if (popped) {
-        const popSetters: Record<string, ((val: any) => void) | undefined> = {
-          year: setSelectedYear,
-          term: setSelectedTermData,
-          subject: setSelectedSubjectData,
+        const popSetters: Record<'year' | 'term' | 'subject', (val: SelectedYearData | SelectedTermData | SubjectData | null) => void> = {
+          year: (v) => setSelectedYear(v as SelectedYearData | null),
+          term: (v) => setSelectedTermData(v as SelectedTermData | null),
+          subject: (v) => setSelectedSubjectData(v as SubjectData | null),
         };
-        const setter = popSetters[popped.type as keyof typeof popSetters];
+        const setter = popSetters[popped.type as 'year' | 'term' | 'subject'];
         if (setter) {
-          setter(popped.data);
+          setter(popped.data as SelectedYearData | SelectedTermData | SubjectData | null);
         }
       }
       return newStack;

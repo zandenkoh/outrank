@@ -1003,7 +1003,7 @@ useEffect(() => {
       };
 
 // Upsert user in DB
-let { data: existingUser, error: fetchError }: { data: User | null; error: PostgrestError | null } = await supabase
+const { data: existingUser, error: fetchError }: { data: User | null; error: PostgrestError | null } = await supabase
   .from('users')
   .select('*')
   .eq('id', session.user.id)

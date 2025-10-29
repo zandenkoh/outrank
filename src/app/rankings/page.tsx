@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { TrendingUp, TrendingDown, ChevronLeft, Trophy, ChevronRight, Users, BarChart3, Calendar, Sparkles, Crown, ArrowUpRight, Lock, Shield, X, Filter, Search, Plus } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, PostgrestError } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -318,7 +318,7 @@ const SchoolInsightsModal: React.FC<SchoolInsightsModalProps> = ({ school, level
             .rpc('get_school_subject_averages', { 
               p_school_code: school.school_code, 
               p_level: level 
-            }) as { data: Subject[] | null; error: any };
+            }) as { data: Subject[] | null; error: PostgrestError | null };
 
           if (error) {
             console.error('Error fetching school subject data:', error);
@@ -367,8 +367,8 @@ const SchoolInsightsModal: React.FC<SchoolInsightsModalProps> = ({ school, level
               <div className="w-6" />
             </div>
             <div className="text-center">
-              <p className="text-lime-400 font-semibold text-lg">{school.school_name}</p>
-              <p className="text-gray-500 text-sm">{getOrdinal(school.national_rank ?? 1)} nationally</p>
+              <p className="text-lime-400 font-semibold text-lg">{school?.school_name || 'Unknown School'}</p>
+              <p className="text-gray-500 text-sm">{getOrdinal(school?.national_rank ?? 1)} nationally</p>
             </div>
           </div>
 
@@ -377,8 +377,8 @@ const SchoolInsightsModal: React.FC<SchoolInsightsModalProps> = ({ school, level
             {/* Overall Stat */}
             <div className="bg-slate-800 rounded-xl p-4 text-center border border-slate-700">
               <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Overall Average</p>
-              <p className="text-3xl font-bold text-white">{school.average_overall?.toFixed(1) || 0}%</p>
-              <p className="text-xs text-gray-500 mt-1">{school.total_students} students</p>
+              <p className="text-3xl font-bold text-white">{(() => { const a = school?.average_overall; return a != null ? a.toFixed(1) : 0; })()}%</p>
+              <p className="text-xs text-gray-500 mt-1">{school?.total_students ?? 0} students</p>
             </div>
 
             {/* Subject Breakdown */}
@@ -733,9 +733,11 @@ const Rankings: React.FC = () => {
       // Proactively update school stats (with error handling)
       try {
         await supabase.rpc('update_school_stats_by_level', { p_level: currentUser.level });
-      } catch (rpcErr: any) {
-        if (rpcErr.code === '400') {
-          console.error('RPC failed (possibly no data):', rpcErr);
+      } catch (rpcErr: unknown) {
+        // Narrow unknown to PostgrestError if possible
+        const err = rpcErr as PostgrestError | undefined;
+        if (err && err.code === '400') {
+          console.error('RPC failed (possibly no data):', err);
           // Continue without update; fetch existing
         } else {
           throw rpcErr;  // Re-throw non-400
@@ -748,7 +750,7 @@ const Rankings: React.FC = () => {
         .select('school_code, school_name, average_overall, national_rank, total_students, level')
         .eq('level', currentUser.level)
         .order('average_overall', { ascending: false })
-        .limit(20) as { data: School[] | null; error: any };
+        .limit(20) as { data: School[] | null; error: PostgrestError | null };
 
       if (schoolsError) throw schoolsError;
 
@@ -766,7 +768,7 @@ const Rankings: React.FC = () => {
 
       // Fetch subject rankings
       const { data: subjectsData, error: subjectsError } = await supabase
-        .rpc('get_national_subject_averages', { p_level: currentUser.level }) as { data: Subject[] | null; error: any };
+        .rpc('get_national_subject_averages', { p_level: currentUser.level }) as { data: Subject[] | null; error: PostgrestError | null };
 
       if (subjectsError) {
         console.error('Subject fetch error:', subjectsError);
@@ -831,16 +833,21 @@ const Rankings: React.FC = () => {
   useEffect(() => {
     const loadData = async (): Promise<void> => {
       try {
-        let { data: { session } } = await supabase.auth.getSession();
+        const sessionResp = await supabase.auth.getSession();
+        let session = sessionResp.data.session;
 
         if (!session) {
           const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
           if (anonError) throw anonError;
-          session = anonData.session;
+          session = anonData?.session ?? null;
+        }
+
+        if (!session) {
+          throw new Error('Unable to obtain session');
         }
 
         const localUserStr = localStorage.getItem('outrankUser');
-        let localUser: Partial<User> = localUserStr ? JSON.parse(localUserStr) : {
+        const localUser: Partial<User> = localUserStr ? (JSON.parse(localUserStr) as Partial<User>) : {
           nickname: 'Student',
           school_code: 'RI',
           school_name: 'Raffles Institution',
@@ -848,11 +855,11 @@ const Rankings: React.FC = () => {
         };
 
         // Upsert user (same as dashboard)
-        let { data: existingUser, error: fetchError } = await supabase
+        const { data: existingUser, error: fetchError } = await supabase
           .from('users')
           .select('*')
           .eq('id', session.user.id)
-          .single() as { data: User | null; error: any };
+          .single() as { data: User | null; error: PostgrestError | null };
 
         let dbUser: User;
         if (fetchError && fetchError.code === 'PGRST116') {
@@ -894,7 +901,8 @@ const Rankings: React.FC = () => {
         }
 
         if ('id' in localUser && localUser.id !== session.user.id) {
-          localUser.id = session.user.id;
+          // allowed to mutate properties of localUser even if declared const
+          (localUser as Partial<User>).id = session.user.id;
           localStorage.setItem('outrankUser', JSON.stringify(localUser));
         }
 
