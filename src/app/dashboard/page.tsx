@@ -4,20 +4,101 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, TrendingUp, TrendingDown, ChevronLeft, Trophy, ChevronRight, Users, BarChart3, Calendar, Sparkles, Crown, ArrowUpRight, Lock, Shield, X } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, PostgrestError } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
+import { ReactNode } from 'react';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// Interfaces
+interface User {
+  id: string;
+  nickname?: string;
+  school_code: string;
+  school_name: string;
+  level: string;
+  opted_in_cohort: boolean;
+  created_at: string;
+  updated_at: string;
+  last_active_at: string;
+}
+
+interface Grade {
+  id?: string;
+  user_id: string;
+  subject: string;
+  assessment_name: string;
+  score: number;
+  max_score: number;
+  assessment_date: string;
+  percentage?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SubjectData {
+  subject: string;
+  average: number;
+  trend: number;
+  percentile: number;
+  grades: Grade[];
+}
+
+interface Percentile {
+  school: {
+    percentile: number;
+    rank: number;
+    total: number;
+  };
+  national: {
+    percentile: number;
+    rank: number;
+    total: number;
+  };
+}
+
+interface SchoolStats {
+  national_rank: number;
+  total_students: number;
+  best_subject_average: number;
+  improvement_amount: number;
+}
+
+interface TopSchool {
+  school_code: string;
+  school_name: string;
+  average_overall: number;
+  national_rank: number;
+}
+
+interface FormDataState {
+  subject: string;
+  assessment_name: string;
+  score: string;
+  max_score: string;
+  term: number;
+  year: number;
+  useSpecificDate: boolean;
+  assessment_date: string;
+}
+
+interface SubmitGrade {
+  subject: string;
+  assessment_name: string;
+  score: number;
+  max_score: number;
+  assessment_date: string;
+}
+
 // Utility functions
-const formatDate = (date) => {
+const formatDate = (date: string | Date): string => {
   const d = new Date(date);
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 };
 
-const SUBJECT_EMOJIS = {
+const SUBJECT_EMOJIS: Record<string, string> = {
   mathematics: '📐',
   physics: '⚡',
   chemistry: '🧪',
@@ -31,7 +112,7 @@ const SUBJECT_EMOJIS = {
 };
 
 // Term end dates (approximate for Singapore schools)
-const TERM_END_DATES = {
+const TERM_END_DATES: Record<number, string> = {
   1: '03-31', // March 31
   2: '06-30', // June 30
   3: '09-30', // September 30
@@ -39,7 +120,12 @@ const TERM_END_DATES = {
 };
 
 // Gauge Chart Component
-const GaugeChart = ({ percentage, size = 120 }) => {
+interface GaugeProps {
+  percentage: number;
+  size?: number;
+}
+
+const GaugeChart: React.FC<GaugeProps> = ({ percentage, size = 120 }) => {
   const safePercentage = Math.min(100, Math.max(0, percentage || 0));
   const radius = size / 2;
   const strokeWidth = 10;
@@ -92,7 +178,13 @@ const GaugeChart = ({ percentage, size = 120 }) => {
 };
 
 // Header Component
-const Header = ({ user, date = new Date(), isScrolled = false }) => (
+interface HeaderProps {
+  user: User | null;
+  date?: Date;
+  isScrolled?: boolean;
+}
+
+const Header: React.FC<HeaderProps> = ({ user, date = new Date(), isScrolled = false }) => (
   <motion.div 
     className={`sticky top-0 bg-slate-900/95 backdrop-blur-xl z-50 px-5 transition-all duration-300 ease-out border-b border-slate-800 ${isScrolled ? 'py-3' : 'pt-6 pb-4'}`}
     initial={false}
@@ -132,7 +224,17 @@ const Header = ({ user, date = new Date(), isScrolled = false }) => (
 );
 
 // Stat Card Component
-const StatCard = ({ title, value, subtitle, icon, progress, onTap, color = '#84CC16' }) => (
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  icon?: ReactNode;
+  progress?: number;
+  onTap: () => void;
+  color?: string;
+}
+
+const StatCard: React.FC<StatCardProps> = ({ title, value, subtitle, icon, progress, onTap, color = '#84CC16' }) => (
   <motion.div
     className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex-1 relative overflow-hidden shadow-lg cursor-pointer"
     onClick={onTap}
@@ -175,7 +277,12 @@ const StatCard = ({ title, value, subtitle, icon, progress, onTap, color = '#84C
 );
 
 // Overall Average Card
-const OverallAverageCard = ({ average, trend }) => {
+interface OverallProps {
+  average: number;
+  trend: number;
+}
+
+const OverallAverageCard: React.FC<OverallProps> = ({ average, trend }) => {
   const safeAverage = Math.min(100, Math.max(0, average || 0));
   const safeTrend = trend || 0;
 
@@ -218,7 +325,16 @@ const OverallAverageCard = ({ average, trend }) => {
 };
 
 // Subject Card
-const SubjectCard = ({ subject, average, trend, percentile, grades, onTap }) => {
+interface SubjectProps {
+  subject: string;
+  average: number;
+  trend: number;
+  percentile: number;
+  grades: Grade[];
+  onTap: () => void;
+}
+
+const SubjectCard: React.FC<SubjectProps> = ({ subject, average, trend, percentile, grades, onTap }) => {
   const subjectInfo = { 
     name: subject.charAt(0).toUpperCase() + subject.slice(1), 
     emoji: SUBJECT_EMOJIS[subject] || '📚' 
@@ -271,7 +387,11 @@ const SubjectCard = ({ subject, average, trend, percentile, grades, onTap }) => 
 };
 
 // Empty State
-const EmptyState = ({ onAddGrade }) => (
+interface EmptyProps {
+  onAddGrade: () => void;
+}
+
+const EmptyState: React.FC<EmptyProps> = ({ onAddGrade }) => (
   <motion.div 
     className="flex flex-col items-center justify-center py-12 px-6 text-center bg-slate-900 border border-slate-800 rounded-2xl shadow-xl"
     initial={{ opacity: 0, scale: 0.95 }}
@@ -313,8 +433,15 @@ const EmptyState = ({ onAddGrade }) => (
 );
 
 // Add Grade Modal with Term/Date Toggle
-const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
-  const [formData, setFormData] = useState({
+interface AddProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (data: SubmitGrade) => Promise<void>;
+  subjects: string[];
+}
+
+const AddGradeModal: React.FC<AddProps> = ({ isOpen, onClose, onSubmit, subjects }) => {
+  const [formData, setFormData] = useState<FormDataState>({
     subject: '',
     assessment_name: '',
     score: '',
@@ -324,12 +451,12 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
     useSpecificDate: false,
     assessment_date: new Date().toISOString().split('T')[0]
   });
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const currentYear = new Date().getFullYear();
 
-  const validate = () => {
-    const newErrors = {};
+  const validate = (): Record<string, string> => {
+    const newErrors: Record<string, string> = {};
     if (!formData.subject) newErrors.subject = 'Subject is required';
     if (!formData.assessment_name) newErrors.assessment_name = 'Assessment name is required';
     if (!formData.score) newErrors.score = 'Score is required';
@@ -342,14 +469,14 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
     return newErrors;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async (): Promise<void> => {
     const newErrors = validate();
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
 
-    let finalDate;
+    let finalDate: string;
     if (formData.useSpecificDate) {
       finalDate = formData.assessment_date;
     } else {
@@ -357,8 +484,13 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
       finalDate = `${formData.year}-${monthDay}`;
     }
 
-    const submitData = { ...formData, assessment_date: finalDate };
-    onSubmit(submitData);
+    const submitData: SubmitGrade = { 
+      ...formData, 
+      assessment_date: finalDate,
+      score: parseFloat(formData.score),
+      max_score: parseFloat(formData.max_score)
+    };
+    await onSubmit(submitData);
     setFormData({
       subject: '',
       assessment_name: '',
@@ -530,10 +662,17 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
 };
 
 // Subject Detail Modal
-const SubjectDetailModal = ({ isOpen, subject, onClose }) => {
+interface DetailProps {
+  isOpen: boolean;
+  subject: SubjectData | null;
+  onClose: () => void;
+}
+
+const SubjectDetailModal: React.FC<DetailProps> = ({ isOpen, subject, onClose }) => {
   if (!isOpen || !subject) return null;
 
-  const chartData = (subject.grades || []).map((g) => ({ 
+  const sortedGrades = [...(subject.grades || [])].sort((a, b) => new Date(a.assessment_date).getTime() - new Date(b.assessment_date).getTime());
+  const chartData = sortedGrades.map((g) => ({ 
     name: new Date(g.assessment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), 
     value: g.percentage || 0 
   }));
@@ -541,8 +680,8 @@ const SubjectDetailModal = ({ isOpen, subject, onClose }) => {
   const safeAvg = Math.min(100, Math.max(0, subject.average || 0));
   const safeTrend = subject.trend || 0;
 
-// In SubjectDetailModal
-  const recentGrades = (subject.grades || []).slice(-5); // remove .reverse()
+  // In SubjectDetailModal
+  const recentGrades = sortedGrades.slice(-5); // remove .reverse()
   
   return (
     <AnimatePresence>
@@ -571,7 +710,7 @@ const SubjectDetailModal = ({ isOpen, subject, onClose }) => {
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
             <div className="text-center">
               <div className="text-4xl font-bold text-white mb-2">{safeAvg.toFixed(1)}%</div>
-              <p className="text-gray-400 text-sm mb-4">{(subject.grades || []).length} assessments</p>
+              <p className="text-gray-400 text-sm mb-4">{sortedGrades.length} assessments</p>
               <GaugeChart percentage={safeAvg} size={120} />
             </div>
 
@@ -629,9 +768,9 @@ const SubjectDetailModal = ({ isOpen, subject, onClose }) => {
 
             <div className="space-y-3">
               <h3 className="text-gray-400 text-xs uppercase tracking-wide font-medium">Assessments</h3>
-              {(subject.grades || []).map((grade, index) => (
+              {sortedGrades.map((grade, index) => (
                 <motion.div 
-                  key={grade.id} 
+                  key={grade.id || index} 
                   className="bg-slate-800 rounded-xl p-4 flex justify-between items-center shadow-lg border border-slate-700"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -656,27 +795,27 @@ const SubjectDetailModal = ({ isOpen, subject, onClose }) => {
 };
 
 // Main Dashboard
-export default function Dashboard() {
-  const [user, setUser] = useState(null);
-  const [grades, setGrades] = useState([]);
-  const [overallAverage, setOverallAverage] = useState(0);
-  const [subjectData, setSubjectData] = useState([]);
-  const [percentile, setPercentile] = useState({ 
+const Dashboard: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [overallAverage, setOverallAverage] = useState<number>(0);
+  const [subjectData, setSubjectData] = useState<SubjectData[]>([]);
+  const [percentile, setPercentile] = useState<Percentile>({ 
     school: { percentile: 0, rank: 0, total: 0 }, 
     national: { percentile: 0, rank: 0, total: 0 } 
   });
-  const [schoolStats, setSchoolStats] = useState(null);
-  const [topSchools, setTopSchools] = useState([]);
-  const [bestSubject, setBestSubject] = useState(null);
-  const [bestAvg, setBestAvg] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedSubject, setSelectedSubject] = useState(null);
-  const [trend, setTrend] = useState(0);
-  const [isScrolled, setIsScrolled] = useState(false);
+  const [schoolStats, setSchoolStats] = useState<SchoolStats | null>(null);
+  const [topSchools, setTopSchools] = useState<TopSchool[]>([]);
+  const [bestSubject, setBestSubject] = useState<string | null>(null);
+  const [bestAvg, setBestAvg] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [selectedSubject, setSelectedSubject] = useState<SubjectData | null>(null);
+  const [trend, setTrend] = useState<number>(0);
+  const [isScrolled, setIsScrolled] = useState<boolean>(false);
   const router = useRouter();
 
-  const refetchData = useCallback(async (currentUser) => {
+  const refetchData = useCallback(async (currentUser: User): Promise<void> => {
     try {
       // Fetch grades
       const { data: fetchedGrades, error } = await supabase
@@ -685,7 +824,9 @@ export default function Dashboard() {
         .eq('user_id', currentUser.id)
         .order('assessment_date', { ascending: false });
 
-      const currentGrades = fetchedGrades || [];
+      if (error) throw error;
+
+      const currentGrades: Grade[] = fetchedGrades || [];
       setGrades(currentGrades);
 
       if (currentGrades.length > 0) {
@@ -769,13 +910,13 @@ export default function Dashboard() {
 
         // Calculate subject data
         const subjects = [...new Set(currentGrades.map(g => g.subject))];
-        const subjectStats = await Promise.all(subjects.map(async (sub) => {
-const subGrades = currentGrades.filter(g => g.subject === sub);
-  const sortedSubGrades = [...subGrades].sort((a, b) => new Date(a.assessment_date) - new Date(b.assessment_date));
-  const subAvg = sortedSubGrades.reduce((sum, g) => sum + (g.percentage || 0), 0) / sortedSubGrades.length;
-  const subTrend = sortedSubGrades.length >= 2 
-    ? (sortedSubGrades[sortedSubGrades.length - 1].percentage || 0) - (sortedSubGrades[0].percentage || 0) 
-    : 0;
+        const subjectStatsPromises = subjects.map(async (sub: string) => {
+          const subGrades = currentGrades.filter(g => g.subject === sub);
+          const sortedSubGrades = [...subGrades].sort((a, b) => new Date(a.assessment_date).getTime() - new Date(b.assessment_date).getTime());
+          const subAvg = sortedSubGrades.reduce((sum, g) => sum + (g.percentage || 0), 0) / sortedSubGrades.length;
+          const subTrend = sortedSubGrades.length >= 2 
+            ? (sortedSubGrades[sortedSubGrades.length - 1].percentage || 0) - (sortedSubGrades[0].percentage || 0) 
+            : 0;
 
           let subPerc = 0;
           try {
@@ -789,15 +930,16 @@ const subGrades = currentGrades.filter(g => g.subject === sub);
             console.error('Subject percentile error:', err);
           }
 
-return { 
-    subject: sub, 
-    average: subAvg, 
-    trend: subTrend, 
-    percentile: subPerc, 
-    grades: sortedSubGrades 
-  };
-        }));
+          return { 
+            subject: sub, 
+            average: subAvg, 
+            trend: subTrend, 
+            percentile: subPerc, 
+            grades: sortedSubGrades 
+          };
+        });
         
+        const subjectStats = await Promise.all(subjectStatsPromises);
         setSubjectData(subjectStats);
 
         // Compute best subject
@@ -830,91 +972,114 @@ return {
     }
   }, []);
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        let { data: { session } } = await supabase.auth.getSession();
+useEffect(() => {
+  const loadData = async (): Promise<void> => {
+    try {
+      let { data: { session } } = await supabase.auth.getSession();
 
+      if (!session) {
+        const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
+        if (anonError) throw anonError;
+        session = anonData.session;
         if (!session) {
-          const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
-          if (anonError) throw anonError;
-          session = anonData.session;
+          throw new Error('Anonymous sign-in failed');
         }
-
-        const localUserStr = localStorage.getItem('outrankUser');
-        let localUser = localUserStr ? JSON.parse(localUserStr) : {
-          nickname: 'Student',
-          school_code: 'RI',
-          school_name: 'Raffles Institution',
-          level: 'sec_4'
-        };
-
-        // Upsert user in DB
-        let { data: existingUser, error: fetchError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-
-        let dbUser;
-        if (fetchError && fetchError.code === 'PGRST116') {
-          // Insert new user
-          dbUser = {
-            id: session.user.id,
-            ...localUser,
-            opted_in_cohort: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            last_active_at: new Date().toISOString()
-          };
-          const { error: insertError } = await supabase
-            .from('users')
-            .insert([dbUser]);
-          if (insertError) throw insertError;
-        } else if (existingUser) {
-          dbUser = existingUser;
-          // Update if local data changed
-          const updates = {};
-          if (localUser.nickname && localUser.nickname !== dbUser.nickname) updates.nickname = localUser.nickname;
-          if (localUser.school_code && localUser.school_code !== dbUser.school_code) {
-            updates.school_code = localUser.school_code;
-            updates.school_name = localUser.school_name;
-          }
-          if (localUser.level && localUser.level !== dbUser.level) updates.level = localUser.level;
-          if (Object.keys(updates).length > 0) {
-            updates.updated_at = new Date().toISOString();
-            updates.last_active_at = new Date().toISOString();
-            const { error: updateError } = await supabase
-              .from('users')
-              .update(updates)
-              .eq('id', session.user.id);
-            if (updateError) console.error('Update error:', updateError);
-          }
-        } else {
-          throw new Error('User fetch failed');
-        }
-
-        // Update localStorage with db id if needed
-        if (localUser.id !== session.user.id) {
-          localUser.id = session.user.id;
-          localStorage.setItem('outrankUser', JSON.stringify(localUser));
-        }
-
-        setUser(dbUser);
-        await refetchData(dbUser);
-      } catch (err) {
-        console.error('Error loading data:', err);
-      } finally {
-        setLoading(false);
       }
-    };
 
-    loadData();
-  }, [refetchData]);
+      const localUserStr = localStorage.getItem('outrankUser');
+      const localUserPartial: Partial<User> = localUserStr ? JSON.parse(localUserStr) : {
+        nickname: 'Student',
+        school_code: 'RI',
+        school_name: 'Raffles Institution',
+        level: 'sec_4'
+      };
+
+      // Ensure required fields for new user
+      const defaultUser: Omit<User, 'id' | 'opted_in_cohort' | 'created_at' | 'updated_at' | 'last_active_at'> = {
+        nickname: localUserPartial.nickname || 'Student',
+        school_code: localUserPartial.school_code || 'RI',
+        school_name: localUserPartial.school_name || 'Raffles Institution',
+        level: localUserPartial.level || 'sec_4'
+      };
+
+// Upsert user in DB
+let { data: existingUser, error: fetchError }: { data: User | null; error: PostgrestError | null } = await supabase
+  .from('users')
+  .select('*')
+  .eq('id', session.user.id)
+  .single();
+
+// Handle potential nulls/errors explicitly to avoid runtime issues
+if (fetchError && fetchError.code !== 'PGRST116') {
+  throw fetchError; // Or handle gracefully
+}
+
+      let dbUser: User;
+      if (fetchError && fetchError.code === 'PGRST116') {
+        // Insert new user
+        const newUser: User = {
+          id: session.user.id,
+          ...defaultUser,
+          opted_in_cohort: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          last_active_at: new Date().toISOString()
+        };
+        const { data: insertedUser, error: insertError } = await supabase
+          .from('users')
+          .insert([newUser])
+          .select()
+          .single();
+        if (insertError) throw insertError;
+        dbUser = insertedUser!;
+      } else if (existingUser) {
+        dbUser = existingUser;
+        // Update if local data changed
+        const updates: Partial<User> = {};
+        if (localUserPartial.nickname && localUserPartial.nickname !== dbUser.nickname) {
+          updates.nickname = localUserPartial.nickname;
+        }
+        if (localUserPartial.school_code && localUserPartial.school_code !== dbUser.school_code) {
+          updates.school_code = localUserPartial.school_code;
+        }
+        if (localUserPartial.school_name && localUserPartial.school_name !== dbUser.school_name) {
+          updates.school_name = localUserPartial.school_name;
+        }
+        if (localUserPartial.level && localUserPartial.level !== dbUser.level) {
+          updates.level = localUserPartial.level;
+        }
+        if (Object.keys(updates).length > 0) {
+          updates.updated_at = new Date().toISOString();
+          updates.last_active_at = new Date().toISOString();
+          const { error: updateError } = await supabase
+            .from('users')
+            .update(updates)
+            .eq('id', session.user.id);
+          if (updateError) console.error('Update error:', updateError);
+        }
+      } else {
+        throw new Error('User fetch failed');
+      }
+
+      // Update localStorage with db id if needed
+      const updatedLocalUser = { ...localUserPartial, id: session.user.id };
+      localStorage.setItem('outrankUser', JSON.stringify(updatedLocalUser));
+
+      setUser(dbUser);
+      await refetchData(dbUser);
+    } catch (err) {
+      console.error('Error loading data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  loadData();
+}, [refetchData]);
 
   // Scroll listener
   useEffect(() => {
-    const handleScroll = () => {
+    const handleScroll = (): void => {
       setIsScrolled(window.scrollY > 50);
     };
 
@@ -922,18 +1087,16 @@ return {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const handleAddGrade = async (formData) => {
+  const handleAddGrade = async (formData: SubmitGrade): Promise<void> => {
     if (!user) return;
 
-    const newGrade = {
+    const newGrade: Omit<Grade, 'id' | 'created_at' | 'updated_at'> = {
       user_id: user.id,
       subject: formData.subject,
       assessment_name: formData.assessment_name,
-      score: parseFloat(formData.score),
-      max_score: parseFloat(formData.max_score),
-      assessment_date: formData.assessment_date,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      score: formData.score,
+      max_score: formData.max_score,
+      assessment_date: formData.assessment_date
     };
 
     try {
@@ -953,10 +1116,12 @@ return {
     }
 
     setIsModalOpen(false);
-    await refetchData(user);
+    if (user) {
+      await refetchData(user);
+    }
   };
 
-  const handleSubjectTap = (sub) => {
+  const handleSubjectTap = (sub: SubjectData): void => {
     setSelectedSubject(sub);
   };
 
@@ -999,7 +1164,7 @@ return {
   const safeSchoolBetter = Math.max(0, safeSchoolTotal - safeSchoolRank);
   const safeNatBetter = Math.max(0, safeNatTotal - safeNatRank);
 
-  const getOrdinal = (n) => {
+  const getOrdinal = (n: number): string => {
     const s = ['th', 'st', 'nd', 'rd'];
     const v = n % 100;
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
@@ -1044,7 +1209,7 @@ return {
                   value={bestSubject.charAt(0).toUpperCase() + bestSubject.slice(1)}
                   subtitle={`${bestAvg.toFixed(1)}% avg`}
                   icon={<span className="text-xl">{SUBJECT_EMOJIS[bestSubject]}</span>}
-                  onTap={() => handleSubjectTap(subjectData.find(s => s.subject === bestSubject))}
+                  onTap={() => handleSubjectTap(subjectData.find(s => s.subject === bestSubject)!)}
                   color="#84CC16"
                 />
               )}
@@ -1066,7 +1231,7 @@ return {
                 </h3>
                 <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 space-y-2">
                   {topSchools.map((school, i) => {
-                    const highlight = school.school_code === user.school_code;
+                    const highlight = school.school_code === user?.school_code;
                     return (
                       <div key={i} className={`flex items-center justify-between text-sm ${highlight ? 'text-cyan-400' : 'text-gray-400'}`}>
                         <span>#{school.national_rank} {school.school_name}</span>
@@ -1202,4 +1367,6 @@ return {
       `}</style>
     </div>
   );
-}
+};
+
+export default Dashboard;

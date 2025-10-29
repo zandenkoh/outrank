@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, Calendar, Sparkles, BarChart3, Trophy, Plus, User, Search, Filter, Edit3, Trash2, X, TrendingUp, TrendingDown, ChevronDown } from 'lucide-react';
+import { ChevronLeft, Calendar, Sparkles, BarChart3, Trophy, Plus, Search, Filter, Edit3, Trash2, X, TrendingUp, TrendingDown, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { createClient } from '@supabase/supabase-js';
@@ -22,7 +22,7 @@ const SUBJECT_EMOJIS = {
   geography: '🌍',
   economics: '📊',
   computing: '💻'
-};
+} as const;
 
 // Term end dates (approximate for Singapore schools)
 const TERM_END_DATES = {
@@ -30,26 +30,180 @@ const TERM_END_DATES = {
   2: '06-30', // June 30
   3: '09-30', // September 30
   4: '12-31'  // December 31
-};
+} as const;
 
-const formatDate = (date) => {
+interface User {
+  id: string;
+  nickname: string;
+  school_code: string;
+  school_name: string;
+  level: string;
+}
+
+interface Grade {
+  id: number;
+  user_id: string;
+  subject: string;
+  assessment_name: string;
+  score: number;
+  max_score: number;
+  assessment_date: string;
+  percentage?: number;
+}
+
+interface FormData {
+  subject: string;
+  assessment_name: string;
+  score: string;
+  max_score: string;
+  term: number;
+  year: number;
+  useSpecificDate: boolean;
+  assessment_date: string;
+}
+
+interface YearStats {
+  avg: number;
+  total: number;
+  bestSubject: string | null;
+  bestAvg: number;
+  improvedSubject: string | null;
+  improvement: number;
+}
+
+interface SubjectData {
+  subject: string;
+  grades: Grade[];
+  average: number;
+  trend: number;
+}
+
+interface SelectedTermData {
+  year: number;
+  term: number;
+  termGrades: Grade[];
+}
+
+interface SelectedYearData {
+  year: number;
+  yearGrades: Grade[];
+}
+
+interface SelectedGradeData {
+  grade: Grade;
+  subjectGrades: Grade[];
+}
+
+interface GaugeChartProps {
+  percentage: number;
+  size?: number;
+}
+
+interface HeaderProps {
+  user: User | null;
+  date?: Date;
+  isScrolled?: boolean;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  viewMode: 'individual' | 'report';
+  onViewModeChange: (mode: 'individual' | 'report') => void;
+  isViewDropdownOpen: boolean;
+  setIsViewDropdownOpen: (open: boolean) => void;
+  showSearch: boolean;
+}
+
+interface GradeItemProps {
+  grade: Grade;
+  onClick: (grade: Grade) => void;
+  onEdit: (grade: Grade) => void;
+  onDelete: (id: number) => void;
+  isEditing: boolean;
+}
+
+interface EmptyHistoryStateProps {
+  onAddGrade: () => void;
+}
+
+interface AddGradeModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (data: FormData) => void;
+  subjects: string[];
+}
+interface AssessmentDetailModalProps {
+  isOpen: boolean;
+  grade: Grade | null;
+  subjectGrades: Grade[];
+  onClose: () => void;
+}
+
+interface SubjectDetailModalProps {
+  isOpen: boolean;
+  subjectData: SubjectData | null;
+  onClose: () => void;
+  onGradeClick: (grade: Grade, grades: Grade[]) => void;
+}
+
+interface TermMiniCardProps {
+  term: number;
+  termGrades: Grade[];
+  onClick: () => void;
+}
+
+interface TermDetailModalProps {
+  isOpen: boolean;
+  year?: number;
+  term?: number;
+  termGrades?: Grade[];
+  onClose: () => void;
+  onSubjectClick: (subData: SubjectData) => void;
+}
+
+interface YearMiniCardProps {
+  year: number;
+  yearGrades: Grade[];
+  onClick: () => void;
+}
+
+interface YearDetailModalProps {
+  isOpen: boolean;
+  year?: number;
+  yearGrades?: Grade[];
+  onClose: () => void;
+  onTermClick: (year: number, term: number, termGrades: Grade[]) => void;
+}
+
+interface SubjectMiniCardProps {
+  subData: SubjectData;
+  onClick: () => void;
+}
+
+interface TermFilterDropdownProps {
+  selectedTerm: string | number;
+  onTermSelect: (term: string | number) => void;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const formatDate = (date: string | Date): string => {
   const d = new Date(date);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
-const formatShortDate = (date) => {
+const formatShortDate = (date: string | Date): string => {
   const d = new Date(date);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
 // Simple Gauge Component
-const GaugeChart = ({ percentage, size = 120 }) => {
+const GaugeChart: React.FC<GaugeChartProps> = ({ percentage, size = 120 }) => {
+  const safePercentage = Math.min(100, Math.max(0, percentage || 0));
   const radius = size / 2;
   const strokeWidth = 8;
   const center = radius - strokeWidth / 2;
   const circumference = 2 * Math.PI * center;
 
-  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+  const strokeDashoffset = circumference - (safePercentage / 100) * circumference;
 
   return (
     <div className="relative inline-block">
@@ -77,14 +231,25 @@ const GaugeChart = ({ percentage, size = 120 }) => {
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-2xl font-bold text-white">{Math.round(percentage)}%</span>
+        <span className="text-2xl font-bold text-white">{Math.round(safePercentage)}%</span>
       </div>
     </div>
   );
 };
 
 // Header Component with View Mode Dropdown
-const Header = ({ user, date = new Date(), isScrolled = false, searchQuery, onSearchChange, viewMode, onViewModeChange, isViewDropdownOpen, setIsViewDropdownOpen, showSearch }) => (
+const Header: React.FC<HeaderProps> = ({ 
+  user, 
+  date = new Date(), 
+  isScrolled = false, 
+  searchQuery, 
+  onSearchChange, 
+  viewMode, 
+  onViewModeChange, 
+  isViewDropdownOpen, 
+  setIsViewDropdownOpen, 
+  showSearch 
+}) => (
   <motion.div 
     className={`sticky top-0 bg-slate-900/95 backdrop-blur-xl z-50 px-5 transition-all duration-300 ease-out border-b border-slate-800 ${isScrolled ? 'py-3' : 'pt-6 pb-4'}`}
     initial={false}
@@ -166,7 +331,7 @@ const Header = ({ user, date = new Date(), isScrolled = false, searchQuery, onSe
           type="text"
           placeholder="Search assessments..."
           value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSearchChange(e.target.value)}
           className="w-full pl-10 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-lime-400/50"
         />
       </div>
@@ -175,7 +340,7 @@ const Header = ({ user, date = new Date(), isScrolled = false, searchQuery, onSe
 );
 
 // Grade Item Component
-const GradeItem = ({ grade, onClick, onEdit, onDelete, isEditing }) => (
+const GradeItem: React.FC<GradeItemProps> = ({ grade, onClick, onEdit, onDelete, isEditing }) => (
   <motion.div
     className="bg-slate-800 border border-slate-700 rounded-xl p-4 mb-3 last:mb-0 hover:bg-slate-700/50 transition-colors cursor-pointer"
     onClick={() => onClick(grade)}
@@ -189,7 +354,7 @@ const GradeItem = ({ grade, onClick, onEdit, onDelete, isEditing }) => (
         <div className="mb-2">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">{SUBJECT_EMOJIS[grade.subject] || '📚'}</span>
+              <span className="text-2xl">{SUBJECT_EMOJIS[grade.subject as keyof typeof SUBJECT_EMOJIS] || '📚'}</span>
               <p className="font-semibold text-white text-base">
                 {grade.subject.charAt(0).toUpperCase() + grade.subject.slice(1)}
               </p>
@@ -203,14 +368,14 @@ const GradeItem = ({ grade, onClick, onEdit, onDelete, isEditing }) => (
         <div className="flex items-center gap-4">
           <div className="text-right">
             <p className="text-lg font-bold text-white">{grade.score}/{grade.max_score}</p>
-            <p className="text-sm text-lime-400">{grade.percentage?.toFixed(1)}%</p>
+            <p className="text-sm text-lime-400">{(grade.percentage || 0).toFixed(1)}%</p>
           </div>
           {isEditing && (
             <div className="flex gap-2 ml-auto">
-              <motion.button onClick={(e) => { e.stopPropagation(); onEdit(grade); }} whileTap={{ scale: 0.9 }} className="p-1 text-lime-400 hover:text-lime-300">
+              <motion.button onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEdit(grade); }} whileTap={{ scale: 0.9 }} className="p-1 text-lime-400 hover:text-lime-300">
                 <Edit3 size={16} />
               </motion.button>
-              <motion.button onClick={(e) => { e.stopPropagation(); onDelete(grade.id); }} whileTap={{ scale: 0.9 }} className="p-1 text-red-400 hover:text-red-300">
+              <motion.button onClick={(e: React.MouseEvent) => { e.stopPropagation(); onDelete(grade.id); }} whileTap={{ scale: 0.9 }} className="p-1 text-red-400 hover:text-red-300">
                 <Trash2 size={16} />
               </motion.button>
             </div>
@@ -222,7 +387,7 @@ const GradeItem = ({ grade, onClick, onEdit, onDelete, isEditing }) => (
 );
 
 // Empty State
-const EmptyHistoryState = ({ onAddGrade }) => (
+const EmptyHistoryState: React.FC<EmptyHistoryStateProps> = ({ onAddGrade }) => (
   <motion.div 
     className="flex flex-col items-center justify-center py-12 px-6 text-center bg-slate-900 border border-slate-800 rounded-2xl shadow-xl"
     initial={{ opacity: 0, scale: 0.95 }}
@@ -253,8 +418,8 @@ const EmptyHistoryState = ({ onAddGrade }) => (
 
 
 // Add Grade Modal with Term/Date Toggle
-const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
-  const [formData, setFormData] = useState({
+const AddGradeModal: React.FC<AddGradeModalProps> = ({ isOpen, onClose, onSubmit, subjects }) => {
+  const [formData, setFormData] = useState<FormData>({
     subject: '',
     assessment_name: '',
     score: '',
@@ -264,12 +429,12 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
     useSpecificDate: false,
     assessment_date: new Date().toISOString().split('T')[0]
   });
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   const currentYear = new Date().getFullYear();
 
-  const validate = () => {
-    const newErrors = {};
+  const validate = (): { [key: string]: string } => {
+    const newErrors: { [key: string]: string } = {};
     if (!formData.subject) newErrors.subject = 'Subject is required';
     if (!formData.assessment_name) newErrors.assessment_name = 'Assessment name is required';
     if (!formData.score) newErrors.score = 'Score is required';
@@ -289,15 +454,15 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
       return;
     }
 
-    let finalDate;
+    let finalDate: string;
     if (formData.useSpecificDate) {
       finalDate = formData.assessment_date;
     } else {
-      const monthDay = TERM_END_DATES[formData.term];
+      const monthDay = TERM_END_DATES[formData.term as keyof typeof TERM_END_DATES];
       finalDate = `${formData.year}-${monthDay}`;
     }
 
-    const submitData = { ...formData, assessment_date: finalDate };
+    const submitData: FormData & { assessment_date: string } = { ...formData, assessment_date: finalDate };
     onSubmit(submitData);
     setFormData({
       subject: '',
@@ -325,7 +490,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
       >
         <motion.div 
           className="bg-slate-900 rounded-t-3xl w-full max-w-md p-6 pb-8 shadow-2xl border-t border-slate-700 relative"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
           initial={{ y: '100%' }}
           animate={{ y: 0 }}
           exit={{ y: '100%' }}
@@ -349,13 +514,13 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
               <label className="block text-gray-400 text-sm mb-2 font-medium">Subject</label>
               <select
                 value={formData.subject}
-                onChange={(e) => setFormData({...formData, subject: e.target.value})}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({...formData, subject: e.target.value})}
                 className={`w-full bg-slate-800 text-white border ${errors.subject ? 'border-red-500' : 'border-slate-700'} rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all`}
               >
                 <option value="">Select a subject</option>
                 {subjects.map(s => (
                   <option key={s} value={s}>
-                    {SUBJECT_EMOJIS[s]} {s.charAt(0).toUpperCase() + s.slice(1)}
+                    {SUBJECT_EMOJIS[s as keyof typeof SUBJECT_EMOJIS]} {s.charAt(0).toUpperCase() + s.slice(1)}
                   </option>
                 ))}
               </select>
@@ -367,7 +532,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
               <input
                 type="text"
                 value={formData.assessment_name}
-                onChange={(e) => setFormData({...formData, assessment_name: e.target.value})}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, assessment_name: e.target.value})}
                 placeholder="e.g., Mid-Year Exam"
                 className={`w-full bg-slate-800 text-white border ${errors.assessment_name ? 'border-red-500' : 'border-slate-700'} rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all`}
               />
@@ -381,7 +546,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
                   type="number"
                   step="0.01"
                   value={formData.score}
-                  onChange={(e) => setFormData({...formData, score: e.target.value})}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, score: e.target.value})}
                   placeholder="85"
                   className={`w-full bg-slate-800 text-white border ${errors.score ? 'border-red-500' : 'border-slate-700'} rounded-xl px-4 py-3 text-center text-xl focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all`}
                 />
@@ -393,7 +558,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
                   type="number"
                   step="0.01"
                   value={formData.max_score}
-                  onChange={(e) => setFormData({...formData, max_score: e.target.value})}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, max_score: e.target.value})}
                   className="w-full bg-slate-800 text-white border border-slate-700 rounded-xl px-4 py-3 text-center text-xl focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all"
                 />
               </div>
@@ -408,7 +573,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
                   <div className="flex gap-2">
                     <select
                       value={formData.term}
-                      onChange={(e) => setFormData({...formData, term: parseInt(e.target.value)})}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({...formData, term: parseInt(e.target.value)})}
                       className="flex-1 bg-slate-800 text-white border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50"
                     >
                       <option value={1}>Term 1</option>
@@ -418,7 +583,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
                     </select>
                     <select
                       value={formData.year}
-                      onChange={(e) => setFormData({...formData, year: parseInt(e.target.value)})}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({...formData, year: parseInt(e.target.value)})}
                       className="w-28 bg-slate-800 text-white border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50"
                     >
                       {[currentYear - 2, currentYear - 1, currentYear, currentYear + 1].map(y => (
@@ -440,7 +605,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
                   <input
                     type="date"
                     value={formData.assessment_date}
-                    onChange={(e) => setFormData({...formData, assessment_date: e.target.value})}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, assessment_date: e.target.value})}
                     className="w-full bg-slate-800 text-white border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50"
                   />
                   <motion.button
@@ -470,20 +635,21 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
 };
 
 // Assessment Detail Modal with horizontal bar chart
-const AssessmentDetailModal = ({ isOpen, grade, subjectGrades, onClose }) => {
+const AssessmentDetailModal: React.FC<AssessmentDetailModalProps> = ({ isOpen, grade, subjectGrades, onClose }) => {
   if (!isOpen || !grade) return null;
 
   // Compute subject stats
   const subjectAvg = subjectGrades.reduce((sum, g) => sum + (g.percentage || 0), 0) / subjectGrades.length || 0;
-  const recentGrades = subjectGrades.slice(-5).sort((a, b) => new Date(a.assessment_date) - new Date(b.assessment_date)); // Oldest first for left to right
+  const recentGrades = subjectGrades.slice(0, 5).sort((a, b) => new Date(a.assessment_date).getTime() - new Date(b.assessment_date).getTime()); // Most recent 5, sorted oldest first
   const chartData = subjectGrades.map((g) => ({ 
-    name: new Date(g.assessment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), 
-    value: g.percentage || 0 
-  })).sort((a, b) => new Date(a.name) - new Date(b.name)); // Sort by date
+    name: formatShortDate(g.assessment_date), 
+    value: g.percentage || 0,
+    date: g.assessment_date
+  })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Sort by date
 
   const safeAvg = Math.min(100, Math.max(0, subjectAvg));
   const gradePercentage = grade.percentage || 0;
-  const trend = subjectGrades.length > 1 ? (gradePercentage - subjectGrades[subjectGrades.length - 2]?.percentage || 0) : 0;
+  const trend = subjectGrades.length > 1 ? (subjectGrades[0].percentage! - subjectGrades[1]?.percentage || 0) : 0; // Most recent trend
   const safeTrend = trend;
 
   // Placeholder percentile
@@ -557,48 +723,48 @@ const AssessmentDetailModal = ({ isOpen, grade, subjectGrades, onClose }) => {
               </div>
             )}
 
-{/* Recent Grades Vertical Bar */}
-{recentGrades.length > 0 && (
-  <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
-    <h3 className="text-gray-400 text-xs uppercase tracking-wide mb-3 font-medium">Recent Assessments</h3>
-    <div className="space-y-4">
-      <div className="h-12 flex items-end gap-1">
-        {Array(5).fill(null).map((_, i) => {
-          const g = recentGrades[i];
-          const isCurrent = g && g.id === grade.id;
-          return (
-            <div key={i} className="flex-1 relative group h-full">
-              <div className="absolute inset-0 bg-slate-700 rounded-t opacity-20" />
-              {g ? (
-                <motion.div
-                  className={`absolute bottom-0 left-0 right-0 rounded-t ${isCurrent ? 'bg-gradient-to-t from-lime-500 to-emerald-500 shadow-md' : 'bg-gradient-to-t from-lime-400 to-emerald-400'}`}
-                  initial={{ height: 0 }}
-                  animate={{ height: `${g.percentage || 0}%` }}
-                  transition={{ delay: i * 0.1, duration: 0.5 }}
-                />
-              ) : null}
-              {g && (
-                <div className="absolute bottom-0 left-0 right-0 flex items-end justify-center opacity-0 group-hover:opacity-100 transition-opacity pb-1">
-                  <span className="text-xs text-white bg-black/50 px-1 rounded">{g.assessment_name.slice(0, 10)}...</span>
+            {/* Recent Grades Vertical Bar */}
+            {recentGrades.length > 0 && (
+              <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                <h3 className="text-gray-400 text-xs uppercase tracking-wide mb-3 font-medium">Recent Assessments</h3>
+                <div className="space-y-4">
+                  <div className="h-12 flex items-end gap-1">
+                    {Array.from({ length: 5 }).map((_, i) => {
+                      const g = recentGrades[i];
+                      const isCurrent = g && g.id === grade.id;
+                      return (
+                        <div key={i} className="flex-1 relative group h-full">
+                          <div className="absolute inset-0 bg-slate-700 rounded-t opacity-20" />
+                          {g ? (
+                            <motion.div
+                              className={`absolute bottom-0 left-0 right-0 rounded-t ${isCurrent ? 'bg-gradient-to-t from-lime-500 to-emerald-500 shadow-md' : 'bg-gradient-to-t from-lime-400 to-emerald-400'}`}
+                              initial={{ height: 0 }}
+                              animate={{ height: `${g.percentage || 0}%` }}
+                              transition={{ delay: i * 0.1, duration: 0.5 }}
+                            />
+                          ) : null}
+                          {g && (
+                            <div className="absolute bottom-0 left-0 right-0 flex items-end justify-center opacity-0 group-hover:opacity-100 transition-opacity pb-1">
+                              <span className="text-xs text-white bg-black/50 px-1 rounded">{g.assessment_name.slice(0, 10)}...</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    {Array.from({ length: 5 }).map((_, i) => {
+                      const g = recentGrades[i];
+                      return (
+                        <span key={i} className="text-center min-w-[20%]">
+                          {g ? formatShortDate(g.assessment_date) : ''}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex justify-between text-xs text-gray-500">
-        {Array(5).fill(null).map((_, i) => {
-          const g = recentGrades[i];
-          return (
-            <span key={i} className="text-center min-w-[20%]">
-              {g ? formatShortDate(g.assessment_date) : ''}
-            </span>
-          );
-        })}
-      </div>
-    </div>
-  </div>
-)}
+              </div>
+            )}
 
             {/* All Subject Grades List */}
             <div className="space-y-3">
@@ -617,7 +783,7 @@ const AssessmentDetailModal = ({ isOpen, grade, subjectGrades, onClose }) => {
                   </div>
                   <div className="text-right">
                     <p className={`font-bold text-lg ${g.id === grade.id ? 'text-lime-400' : 'text-white'}`}>{g.score}/{g.max_score}</p>
-                    <p className={`text-xs font-medium ${g.percentage > 80 ? 'text-lime-400' : g.percentage > 60 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    <p className={`text-xs font-medium ${ (g.percentage || 0) > 80 ? 'text-lime-400' : (g.percentage || 0) > 60 ? 'text-yellow-400' : 'text-red-400'}`}>
                       ({(g.percentage || 0).toFixed(1)}%)
                     </p>
                   </div>
@@ -632,19 +798,20 @@ const AssessmentDetailModal = ({ isOpen, grade, subjectGrades, onClose }) => {
 };
 
 // Subject Detail Modal
-const SubjectDetailModal = ({ isOpen, subjectData, onClose, onGradeClick }) => {
+const SubjectDetailModal: React.FC<SubjectDetailModalProps> = ({ isOpen, subjectData, onClose, onGradeClick }) => {
   if (!isOpen || !subjectData) return null;
 
   const { subject, grades, average, trend } = subjectData;
   const chartData = grades.map((g) => ({ 
-    name: new Date(g.assessment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), 
-    value: g.percentage || 0 
-  })).sort((a, b) => new Date(a.name) - new Date(b.name));
+    name: formatShortDate(g.assessment_date), 
+    value: g.percentage || 0,
+    date: g.assessment_date
+  })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const safeAvg = Math.min(100, Math.max(0, average || 0));
   const safeTrend = trend || 0;
 
-  const recentGrades = grades.slice(-5).sort((a, b) => new Date(a.assessment_date) - new Date(b.assessment_date)); // Oldest first
+  const recentGrades = grades.slice(-5).sort((a, b) => new Date(a.assessment_date).getTime() - new Date(b.assessment_date).getTime()); // Most recent 5, sorted oldest first
 
   return (
     <AnimatePresence>
@@ -710,31 +877,28 @@ const SubjectDetailModal = ({ isOpen, subjectData, onClose, onGradeClick }) => {
                 </div>
                 <div className="space-y-4">
                   <div className="h-12 flex gap-1">
-                    {Array(5).fill(null).map((_, i) => {
-                      const g = recentGrades[i];
-                      return (
-                        <div key={i} className="flex-1 relative group">
-                          {g ? (
-                            <motion.div
-                              className="h-full bg-gradient-to-r from-lime-400 to-emerald-400 rounded"
-                              initial={{ width: 0 }}
-                              animate={{ width: `${g.percentage || 0}%` }}
-                              transition={{ delay: i * 0.1, duration: 0.5 }}
-                            />
-                          ) : (
-                            <div className="h-full bg-slate-700 rounded opacity-50" />
-                          )}
-                          {g && (
-                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                              <span className="text-xs text-white bg-black/50 px-1 rounded">{g.assessment_name.slice(0, 10)}...</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                    {Array.from({ length: 5 }, (_, i) => recentGrades[i] || null).map((g, i) => (
+                      <div key={i} className="flex-1 relative group">
+                        {g ? (
+                          <motion.div
+                            className="h-full bg-gradient-to-r from-lime-400 to-emerald-400 rounded"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${g.percentage || 0}%` }}
+                            transition={{ delay: i * 0.1, duration: 0.5 }}
+                          />
+                        ) : (
+                          <div className="h-full bg-slate-700 rounded opacity-50" />
+                        )}
+                        {g && (
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span className="text-xs text-white bg-black/50 px-1 rounded">{g.assessment_name.slice(0, 10)}...</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                   <div className="flex justify-between text-xs text-gray-500">
-                    {recentGrades.map((g, i) => (
+                    {Array.from({ length: 5 }, (_, i) => recentGrades[i] || null).map((g, i) => (
                       <span key={i} className="text-center min-w-[20%]">
                         {g ? formatShortDate(g.assessment_date) : ''}
                       </span>
@@ -746,7 +910,7 @@ const SubjectDetailModal = ({ isOpen, subjectData, onClose, onGradeClick }) => {
 
             <div className="space-y-3">
               <h3 className="text-gray-400 text-xs uppercase tracking-wide font-medium">Assessments</h3>
-              {grades.sort((a, b) => new Date(b.assessment_date) - new Date(a.assessment_date)).map((grade, index) => (
+              {grades.sort((a, b) => new Date(b.assessment_date).getTime() - new Date(a.assessment_date).getTime()).map((grade, index) => (
                 <motion.div 
                   key={grade.id} 
                   className="bg-slate-800 rounded-xl p-4 flex justify-between items-center shadow-lg border border-slate-700 cursor-pointer hover:bg-slate-700/50"
@@ -774,7 +938,7 @@ const SubjectDetailModal = ({ isOpen, subjectData, onClose, onGradeClick }) => {
 };
 
 // Term Mini Card for Year/Term Modals
-const TermMiniCard = ({ term, termGrades, onClick }) => {
+const TermMiniCard: React.FC<TermMiniCardProps> = ({ term, termGrades, onClick }) => {
   const termAvg = termGrades.reduce((sum, g) => sum + (g.percentage || 0), 0) / termGrades.length || 0;
   const count = termGrades.length;
 
@@ -801,24 +965,29 @@ const TermMiniCard = ({ term, termGrades, onClick }) => {
 };
 
 // Term Detail Modal
-const TermDetailModal = ({ isOpen, year, term, termGrades, onClose, onSubjectClick }) => {
-  if (!isOpen || !termGrades) return null;
+const TermDetailModal: React.FC<TermDetailModalProps> = ({ isOpen, year, term, termGrades, onClose, onSubjectClick }) => {
+  if (!isOpen || !year || !term || !termGrades) return null;
 
   const termAvg = termGrades.reduce((sum, g) => sum + (g.percentage || 0), 0) / termGrades.length || 0;
   const count = termGrades.length;
 
-  const bySub = termGrades.reduce((acc, g) => {
+  const bySub = termGrades.reduce((acc: { [key: string]: Grade[] }, g) => {
     if (!acc[g.subject]) acc[g.subject] = [];
     acc[g.subject].push(g);
     return acc;
   }, {});
 
-  const subjectEntries = Object.entries(bySub).map(([sub, sGrades]) => ({
-    subject: sub,
-    grades: sGrades,
-    average: sGrades.reduce((sum, g) => sum + (g.percentage || 0), 0) / sGrades.length || 0,
-    trend: sGrades.length > 1 ? (sGrades[sGrades.length - 1].percentage - sGrades[0].percentage) : 0
-  }));
+  const subjectEntries = Object.entries(bySub).map(([sub, sGrades]) => {
+    const sortedGrades = [...sGrades].sort((a, b) => new Date(a.assessment_date).getTime() - new Date(b.assessment_date).getTime());
+    const avg = sortedGrades.reduce((sum, g) => sum + (g.percentage || 0), 0) / sortedGrades.length || 0;
+    const tr = sortedGrades.length > 1 ? sortedGrades[sortedGrades.length - 1].percentage! - sortedGrades[0].percentage! : 0;
+    return {
+      subject: sub,
+      grades: sortedGrades,
+      average: avg,
+      trend: tr
+    };
+  });
 
   return (
     <AnimatePresence>
@@ -864,7 +1033,7 @@ const TermDetailModal = ({ isOpen, year, term, termGrades, onClose, onSubjectCli
                 >
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-3">
-                      <span className="text-2xl">{SUBJECT_EMOJIS[subData.subject] || '📚'}</span>
+                      <span className="text-2xl">{SUBJECT_EMOJIS[subData.subject as keyof typeof SUBJECT_EMOJIS] || '📚'}</span>
                       <div>
                         <p className="font-semibold text-white">{subData.subject.charAt(0).toUpperCase() + subData.subject.slice(1)}</p>
                         <p className="text-xs text-gray-400">{subData.grades.length} assessments</p>
@@ -885,7 +1054,7 @@ const TermDetailModal = ({ isOpen, year, term, termGrades, onClose, onSubjectCli
 };
 
 // Year Mini Card for Report View
-const YearMiniCard = ({ year, yearGrades, onClick }) => {
+const YearMiniCard: React.FC<YearMiniCardProps> = ({ year, yearGrades, onClick }) => {
   const stats = computeYearStats(yearGrades);
   return (
     <motion.div
@@ -908,8 +1077,8 @@ const YearMiniCard = ({ year, yearGrades, onClick }) => {
 };
 
 // Year Detail Modal
-const YearDetailModal = ({ isOpen, year, yearGrades, onClose, onTermClick }) => {
-  if (!isOpen || !yearGrades) return null;
+const YearDetailModal: React.FC<YearDetailModalProps> = ({ isOpen, year, yearGrades, onClose, onTermClick }) => {
+  if (!isOpen || !year || !yearGrades) return null;
 
   const stats = computeYearStats(yearGrades);
 
@@ -992,7 +1161,7 @@ const YearDetailModal = ({ isOpen, year, yearGrades, onClose, onTermClick }) => 
 };
 
 // Subject Mini Card for Term Modal
-const SubjectMiniCard = ({ subData, onClick }) => {
+const SubjectMiniCard: React.FC<SubjectMiniCardProps> = ({ subData, onClick }) => {
   const { subject, average, grades } = subData;
   return (
     <motion.div
@@ -1005,7 +1174,7 @@ const SubjectMiniCard = ({ subData, onClick }) => {
     >
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">{SUBJECT_EMOJIS[subject] || '📚'}</span>
+          <span className="text-2xl">{SUBJECT_EMOJIS[subject as keyof typeof SUBJECT_EMOJIS] || '📚'}</span>
           <div>
             <p className="font-semibold text-white">{subject.charAt(0).toUpperCase() + subject.slice(1)}</p>
             <p className="text-xs text-gray-400">{grades.length} assessments</p>
@@ -1018,7 +1187,7 @@ const SubjectMiniCard = ({ subData, onClick }) => {
 };
 
 // Helper to get term from date
-const getTermFromDate = (dateStr, year) => {
+const getTermFromDate = (dateStr: string, year: number): number => {
   const date = new Date(dateStr);
   const month = date.getMonth() + 1;
   if (month <= 3) return 1;
@@ -1028,12 +1197,12 @@ const getTermFromDate = (dateStr, year) => {
 };
 
 // Compute Year Stats
-const computeYearStats = (yearGrades) => {
+const computeYearStats = (yearGrades: Grade[]): YearStats => {
   if (!yearGrades.length) {
     return { avg: 0, total: 0, bestSubject: null, bestAvg: 0, improvedSubject: null, improvement: 0 };
   }
   const avg = yearGrades.reduce((sum, g) => sum + (g.percentage || 0), 0) / yearGrades.length;
-  const bySubject = yearGrades.reduce((acc, g) => {
+  const bySubject = yearGrades.reduce((acc: { [key: string]: Grade[] }, g) => {
     if (!acc[g.subject]) acc[g.subject] = [];
     acc[g.subject].push(g);
     return acc;
@@ -1041,15 +1210,15 @@ const computeYearStats = (yearGrades) => {
   const subjectAvgs = Object.fromEntries(
     Object.entries(bySubject).map(([sub, gs]) => [sub, gs.reduce((sum, g) => sum + (g.percentage || 0), 0) / gs.length])
   );
-  const bestEntry = Object.entries(subjectAvgs).reduce((a, b) => (a[1] > b[1] ? a : b), ['', 0]);
+  const bestEntry = Object.entries(subjectAvgs).reduce(([maxKey, maxVal], [curKey, curVal]) => (curVal > maxVal ? [curKey, curVal] : [maxKey, maxVal]), ['', 0] as [string, number]);
   const bestSubject = bestEntry[0];
   const bestAvg = bestEntry[1];
   let maxImprove = 0;
-  let impSub = null;
+  let impSub: string | null = null;
   for (const [sub, gs] of Object.entries(bySubject)) {
     if (gs.length < 2) continue;
-    const sorted = [...gs].sort((a, b) => new Date(a.assessment_date) - new Date(b.assessment_date));
-    const diff = sorted[sorted.length - 1].percentage - sorted[0].percentage;
+    const sorted = [...gs].sort((a, b) => new Date(a.assessment_date).getTime() - new Date(b.assessment_date).getTime());
+    const diff = sorted[sorted.length - 1].percentage! - sorted[0].percentage!;
     if (diff > maxImprove) {
       maxImprove = diff;
       impSub = sub;
@@ -1059,7 +1228,7 @@ const computeYearStats = (yearGrades) => {
 };
 
 // Term Filter Dropdown
-const TermFilterDropdown = ({ selectedTerm, onTermSelect, isOpen, onClose }) => (
+const TermFilterDropdown: React.FC<TermFilterDropdownProps> = ({ selectedTerm, onTermSelect, isOpen, onClose }) => (
   <AnimatePresence>
     {isOpen && (
       <motion.div 
@@ -1092,31 +1261,32 @@ const TermFilterDropdown = ({ selectedTerm, onTermSelect, isOpen, onClose }) => 
 );
 
 // Main History Component
-export default function History() {
+const History: React.FC = () => {
   const router = useRouter();
-  const [user, setUser] = useState(null);
-  const [grades, setGrades] = useState([]);
-  const [filteredGrades, setFilteredGrades] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [selectedTerm, setSelectedTerm] = useState('all');
-  const [isEditing, setIsEditing] = useState(false);
-  const [viewMode, setViewMode] = useState('individual'); // 'individual' or 'report'
-  const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedGrade, setSelectedGrade] = useState(null);
-  const [selectedYear, setSelectedYear] = useState(null);
-  const [selectedTermData, setSelectedTermData] = useState(null);
-  const [selectedSubjectData, setSelectedSubjectData] = useState(null);
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
-  const [isTermFilterOpen, setIsTermFilterOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [filteredGrades, setFilteredGrades] = useState<Grade[]>([]);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [selectedTerm, setSelectedTerm] = useState<string | number>('all');
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<'individual' | 'report'>('individual'); // 'individual' or 'report'
+  const [loading, setLoading] = useState<boolean>(true);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [selectedGrade, setSelectedGrade] = useState<SelectedGradeData | null>(null);
+  const [selectedYear, setSelectedYear] = useState<SelectedYearData | null>(null);
+  const [selectedTermData, setSelectedTermData] = useState<SelectedTermData | null>(null);
+  const [selectedSubjectData, setSelectedSubjectData] = useState<SubjectData | null>(null);
+  const [isScrolled, setIsScrolled] = useState<boolean>(false);
+  const [isViewDropdownOpen, setIsViewDropdownOpen] = useState<boolean>(false);
+  const [isTermFilterOpen, setIsTermFilterOpen] = useState<boolean>(false);
+  const [backStack, setBackStack] = useState<Array<{ type: string; data: SelectedYearData | SelectedTermData | SubjectData }>>([]);
 
   // Get unique subjects with grades
   const userSubjects = [...new Set(grades.map(g => g.subject))];
 
   // Group grades by year for report view
-  const gradesByYear = grades.reduce((acc, g) => {
+  const gradesByYear = grades.reduce((acc: { [key: number]: Grade[] }, g) => {
     const year = new Date(g.assessment_date).getFullYear();
     if (!acc[year]) acc[year] = [];
     acc[year].push(g);
@@ -1124,7 +1294,7 @@ export default function History() {
   }, {});
 
   // Available years with grades
-  const availableYears = Object.keys(gradesByYear).sort((a, b) => b - a).map(Number);
+  const availableYears = Object.keys(gradesByYear).sort((a, b) => parseInt(b) - parseInt(a)).map(Number);
 
   const loadUserAndGrades = useCallback(async () => {
     try {
@@ -1136,11 +1306,13 @@ export default function History() {
         session = anonData.session;
       }
 
-      const { data: dbUser } = await supabase
+      const { data: dbUser, error: userError } = await supabase
         .from('users')
         .select('*')
         .eq('id', session.user.id)
         .single();
+
+      if (userError) throw userError;
 
       if (!dbUser) {
         const { data: newUser, error: createError } = await supabase
@@ -1155,9 +1327,9 @@ export default function History() {
           .select()
           .single();
         if (createError) throw createError;
-        setUser(newUser);
+        setUser(newUser as User);
       } else {
-        setUser(dbUser);
+        setUser(dbUser as User);
       }
 
       const { data: gradesData, error } = await supabase
@@ -1168,8 +1340,13 @@ export default function History() {
 
       if (error) throw error;
 
-      setGrades(gradesData || []);
-      setFilteredGrades(gradesData || []);
+      const processedGrades = (gradesData as Grade[] || []).map(g => ({
+        ...g,
+        percentage: (g.score / g.max_score) * 100
+      }));
+
+      setGrades(processedGrades);
+      setFilteredGrades(processedGrades);
 
     } catch (err) {
       console.error('Error loading data:', err);
@@ -1201,7 +1378,7 @@ export default function History() {
       filtered = filtered.filter(grade => {
         const gradeYear = new Date(grade.assessment_date).getFullYear();
         const termNum = getTermFromDate(grade.assessment_date, gradeYear);
-        return termNum === parseInt(selectedTerm);
+        return termNum === parseInt(selectedTerm as string);
       });
     }
 
@@ -1215,10 +1392,10 @@ export default function History() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const handleAddGrade = async (formData) => {
+  const handleAddGrade = async (formData: FormData) => {
     if (!user) return;
 
-    const newGrade = {
+    const newGrade: Omit<Grade, 'id' | 'percentage'> = {
       user_id: user.id,
       subject: formData.subject,
       assessment_name: formData.assessment_name,
@@ -1244,7 +1421,7 @@ export default function History() {
     setIsModalOpen(false);
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to delete this grade?')) return;
 
     const { error } = await supabase.from('grades').delete().eq('id', id);
@@ -1256,70 +1433,68 @@ export default function History() {
     await loadUserAndGrades();
   };
 
-  const handleEdit = (grade) => {
+  const handleEdit = (grade: Grade): void => {
     console.log('Edit grade:', grade);
   };
 
-const handleGradeClick = (grade, contextGrades) => {
-  const subjectGrades = contextGrades || grades.filter((g) => g.subject === grade.subject);
-  const fromSubject = !!selectedSubjectData;
-  if (fromSubject) {
-    setBackStack((prev) => [...prev, { type: 'subject', data: selectedSubjectData }]);
-    setSelectedSubjectData(null);
-  }
-  setSelectedGrade({ ...grade, subjectGrades });
-};
+  const handleGradeClick = (grade: Grade, contextGrades?: Grade[]): void => {
+    const subjectGrades = contextGrades || grades.filter((g) => g.subject === grade.subject);
+    const fromSubject = !!selectedSubjectData;
+    if (fromSubject) {
+      setBackStack((prev) => [...prev, { type: 'subject', data: selectedSubjectData! }]);
+      setSelectedSubjectData(null);
+    }
+    setSelectedGrade({ grade, subjectGrades });
+  };
 
-  const handleYearClick = (year, yearGrades) => {
+  const handleYearClick = (year: number, yearGrades: Grade[]): void => {
     setSelectedYear({ year, yearGrades });
   };
 
-const handleTermClick = (year, term, termGrades) => {
-  if (selectedYear) {
-    setBackStack((prev) => [...prev, { type: 'year', data: selectedYear }]);
-    setSelectedYear(null);
-  }
-  setSelectedTermData({ year, term, termGrades });
-};
-
-const handleSubjectClick = (subData) => {
-  if (selectedTermData) {
-    setBackStack((prev) => [...prev, { type: 'term', data: selectedTermData }]);
-    setSelectedTermData(null);
-  }
-  setSelectedSubjectData(subData);
-};
-
-const [backStack, setBackStack] = useState([]);
-
-const handleModalClose = useCallback((type) => {
-  const setters = {
-    year: setSelectedYear,
-    term: setSelectedTermData,
-    subject: setSelectedSubjectData,
-    assessment: setSelectedGrade,
-  };
-  setters[type]?.(null);
-
-  if (backStack.length === 0) return;
-
-  setBackStack((prev) => {
-    const newStack = [...prev];
-    const popped = newStack.pop();
-    if (popped) {
-      const popSetters = {
-        year: setSelectedYear,
-        term: setSelectedTermData,
-        subject: setSelectedSubjectData,
-      };
-      const setter = popSetters[popped.type];
-      if (setter) {
-        setter(popped.data);
-      }
+  const handleTermClick = (year: number, term: number, termGrades: Grade[]): void => {
+    if (selectedYear) {
+      setBackStack((prev) => [...prev, { type: 'year', data: selectedYear }]);
+      setSelectedYear(null);
     }
-    return newStack;
-  });
-}, [backStack, setSelectedYear, setSelectedTermData, setSelectedSubjectData, setSelectedGrade]);
+    setSelectedTermData({ year, term, termGrades });
+  };
+
+  const handleSubjectClick = (subData: SubjectData): void => {
+    if (selectedTermData) {
+      setBackStack((prev) => [...prev, { type: 'term', data: selectedTermData }]);
+      setSelectedTermData(null);
+    }
+    setSelectedSubjectData(subData);
+  };
+
+  const handleModalClose = useCallback((type: 'year' | 'term' | 'subject' | 'assessment'): void => {
+    const setters: Record<string, ((val: any) => void) | undefined> = {
+      year: setSelectedYear,
+      term: setSelectedTermData,
+      subject: setSelectedSubjectData,
+      assessment: setSelectedGrade,
+    };
+    setters[type]?.(null);
+
+    if (backStack.length === 0) return;
+
+    setBackStack((prev) => {
+      const newStack = [...prev];
+      const popped = newStack.pop();
+      if (popped) {
+        const popSetters: Record<string, ((val: any) => void) | undefined> = {
+          year: setSelectedYear,
+          term: setSelectedTermData,
+          subject: setSelectedSubjectData,
+        };
+        const setter = popSetters[popped.type as keyof typeof popSetters];
+        if (setter) {
+          setter(popped.data);
+        }
+      }
+      return newStack;
+    });
+  }, [backStack]);
 
   if (loading) {
     return (
@@ -1329,7 +1504,7 @@ const handleModalClose = useCallback((type) => {
           isScrolled={false} 
           searchQuery="" 
           onSearchChange={() => {}} 
-          viewMode="" 
+          viewMode="individual"
           onViewModeChange={() => {}} 
           isViewDropdownOpen={false}
           setIsViewDropdownOpen={() => {}}
@@ -1363,36 +1538,36 @@ const handleModalClose = useCallback((type) => {
       <div className="px-5 py-6 space-y-6 relative">
         {viewMode === 'individual' && (
           <>
-{/* Filter Tabs */}
-<div className="flex bg-slate-800 rounded-xl p-1 overflow-x-auto scrollbar-hide box-border">
-  <motion.button
-    onClick={() => setActiveFilter('all')}
-    className={`flex-shrink-0 px-4 py-3 mx-1 rounded-xl text-sm font-medium transition-all whitespace-nowrap min-w-max max-w-32 overflow-hidden box-border ${
-      activeFilter === 'all'
-        ? 'bg-lime-400 text-black shadow-lg'
-        : 'text-gray-400 hover:text-white bg-slate-700/50'
-    }`}
-    whileTap={{ scale: 0.98 }}
-  >
-    <span className="truncate">All Subjects</span>
-  </motion.button>
-  {userSubjects.map((subject) => (
-    <motion.button
-      key={subject}
-      onClick={() => setActiveFilter(subject)}
-      className={`flex-shrink-0 px-4 py-3 mx-1 rounded-xl text-sm font-medium transition-all whitespace-nowrap min-w-max max-w-32 overflow-hidden box-border ${
-        activeFilter === subject
-          ? 'bg-lime-400 text-black shadow-lg'
-          : 'text-gray-400 hover:text-white bg-slate-700/50'
-      }`}
-      whileTap={{ scale: 0.98 }}
-    >
-      <span className="truncate">
-        {SUBJECT_EMOJIS[subject]} {subject.charAt(0).toUpperCase() + subject.slice(1)}
-      </span>
-    </motion.button>
-  ))}
-</div>
+            {/* Filter Tabs */}
+            <div className="flex bg-slate-800 rounded-xl p-1 overflow-x-auto scrollbar-hide box-border">
+              <motion.button
+                onClick={() => setActiveFilter('all')}
+                className={`flex-shrink-0 px-4 py-3 mx-1 rounded-xl text-sm font-medium transition-all whitespace-nowrap min-w-max max-w-32 overflow-hidden box-border ${
+                  activeFilter === 'all'
+                    ? 'bg-lime-400 text-black shadow-lg'
+                    : 'text-gray-400 hover:text-white bg-slate-700/50'
+                }`}
+                whileTap={{ scale: 0.98 }}
+              >
+                <span className="truncate">All Subjects</span>
+              </motion.button>
+              {userSubjects.map((subject) => (
+                <motion.button
+                  key={subject}
+                  onClick={() => setActiveFilter(subject)}
+                  className={`flex-shrink-0 px-4 py-3 mx-1 rounded-xl text-sm font-medium transition-all whitespace-nowrap min-w-max max-w-32 overflow-hidden box-border ${
+                    activeFilter === subject
+                      ? 'bg-lime-400 text-black shadow-lg'
+                      : 'text-gray-400 hover:text-white bg-slate-700/50'
+                  }`}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <span className="truncate">
+                    {SUBJECT_EMOJIS[subject as keyof typeof SUBJECT_EMOJIS]} {subject.charAt(0).toUpperCase() + subject.slice(1)}
+                  </span>
+                </motion.button>
+              ))}
+            </div>
 
             {/* Actions Bar */}
             <div className="flex justify-between items-center">
@@ -1474,34 +1649,34 @@ const handleModalClose = useCallback((type) => {
 
 <AssessmentDetailModal
   isOpen={!!selectedGrade}
-  grade={selectedGrade}
+  grade={selectedGrade?.grade || null}
   subjectGrades={selectedGrade?.subjectGrades || []}
-  onClose={() => handleModalClose('assessment')}  // Updated
+  onClose={() => handleModalClose('assessment')}
 />
 
-<YearDetailModal
-  isOpen={!!selectedYear}
-  year={selectedYear?.year}
-  yearGrades={selectedYear?.yearGrades}
-  onClose={() => setSelectedYear(null)}  // No change (top-level)
-  onTermClick={handleTermClick}
-/>
+      <YearDetailModal
+        isOpen={!!selectedYear}
+        year={selectedYear?.year}
+        yearGrades={selectedYear?.yearGrades}
+        onClose={() => handleModalClose('year')}
+        onTermClick={handleTermClick}
+      />
 
-<TermDetailModal
-  isOpen={!!selectedTermData}
-  year={selectedTermData?.year}
-  term={selectedTermData?.term}
-  termGrades={selectedTermData?.termGrades}
-  onClose={() => handleModalClose('term')}  // Updated
-  onSubjectClick={handleSubjectClick}
-/>
+      <TermDetailModal
+        isOpen={!!selectedTermData}
+        year={selectedTermData?.year}
+        term={selectedTermData?.term}
+        termGrades={selectedTermData?.termGrades}
+        onClose={() => handleModalClose('term')}
+        onSubjectClick={handleSubjectClick}
+      />
 
-<SubjectDetailModal
-  isOpen={!!selectedSubjectData}
-  subjectData={selectedSubjectData}
-  onClose={() => handleModalClose('subject')}  // Updated
-  onGradeClick={handleGradeClick}
-/>
+      <SubjectDetailModal
+        isOpen={!!selectedSubjectData}
+        subjectData={selectedSubjectData}
+        onClose={() => handleModalClose('subject')}
+        onGradeClick={handleGradeClick}
+      />
 
       {/* Bottom Navigation */}
       <motion.div 
@@ -1587,4 +1762,6 @@ const handleModalClose = useCallback((type) => {
       `}</style>
     </div>
   );
-}
+};
+
+export default History;

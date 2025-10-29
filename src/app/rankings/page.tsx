@@ -12,18 +12,18 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Utility functions
-const formatDate = (date) => {
+const formatDate = (date: Date | string): string => {
   const d = new Date(date);
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 };
 
-const getOrdinal = (n) => {
+const getOrdinal = (n: number): string => {
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 };
 
-const SUBJECT_EMOJIS = {
+const SUBJECT_EMOJIS: Record<string, string> = {
   mathematics: '📐',
   physics: '⚡',
   chemistry: '🧪',
@@ -37,15 +37,110 @@ const SUBJECT_EMOJIS = {
 };
 
 // Term end dates (approximate for Singapore schools)
-const TERM_END_DATES = {
+const TERM_END_DATES: Record<number, string> = {
   1: '03-31', // March 31
   2: '06-30', // June 30
   3: '09-30', // September 30
   4: '12-31'  // December 31
 };
 
+// Interfaces
+interface User {
+  id: string;
+  nickname?: string;
+  school_code: string;
+  school_name: string;
+  level: string;
+  opted_in_cohort?: boolean;
+  created_at: string;
+  updated_at: string;
+  last_active_at: string;
+}
+
+interface School {
+  school_code: string;
+  school_name: string;
+  average_overall: number | null;
+  national_rank: number | null;
+  total_students: number;
+  level: string;
+}
+
+interface Subject {
+  subject: string;
+  average: number | null;
+  total_students: number;
+}
+
+interface FormData {
+  subject: string;
+  assessment_name: string;
+  score: string;
+  max_score: string;
+  term: number;
+  year: number;
+  useSpecificDate: boolean;
+  assessment_date: string;
+}
+
+interface Errors {
+  [key: string]: string;
+}
+
+interface HeaderProps {
+  user: User | null;
+  date?: Date;
+  isScrolled?: boolean;
+  activeTab: string;
+}
+
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  icon?: React.ReactNode;
+  progress?: number;
+  onTap: () => void;
+  color?: string;
+}
+
+interface SchoolRankingItemProps {
+  school: School;
+  index: number;
+  isUserSchool: boolean;
+  onTap: (school: School) => void;
+}
+
+interface SubjectRankingItemProps {
+  subject: Subject;
+  index: number;
+  userPercentile?: number;
+  onTap: () => void;
+}
+
+interface SchoolInsightsModalProps {
+  school: School | null;
+  level: string;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+interface AddGradeModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (data: FormData) => void;
+  subjects: string[];
+}
+
+interface TabButtonProps {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+}
+
 // Header Component (adapted for Rankings)
-const Header = ({ user, date = new Date(), isScrolled = false, activeTab = 'overall' }) => (
+const Header: React.FC<HeaderProps> = ({ user, date = new Date(), isScrolled = false, activeTab = 'overall' }) => (
   <motion.div 
     className={`sticky top-0 bg-slate-900/95 backdrop-blur-xl z-50 px-5 transition-all duration-300 ease-out border-b border-slate-800 ${isScrolled ? 'py-3' : 'pt-6 pb-4'}`}
     initial={false}
@@ -78,7 +173,7 @@ const Header = ({ user, date = new Date(), isScrolled = false, activeTab = 'over
         transition={{ duration: 0.3 }}
         whileTap={{ scale: 0.9 }}
       >
-        {user?.nickname?.[0]?.toUpperCase() || 'U'}
+        {(user?.nickname || 'U')[0].toUpperCase()}
       </motion.div>
     </div>
     {/* Tab Indicators */}
@@ -96,7 +191,7 @@ const Header = ({ user, date = new Date(), isScrolled = false, activeTab = 'over
 );
 
 // Stat Card Component (reused)
-const StatCard = ({ title, value, subtitle, icon, progress, onTap, color = '#84CC16' }) => (
+const StatCard: React.FC<StatCardProps> = ({ title, value, subtitle, icon, progress, onTap, color = '#84CC16' }) => (
   <motion.div
     className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex-1 relative overflow-hidden shadow-lg cursor-pointer"
     onClick={onTap}
@@ -139,10 +234,10 @@ const StatCard = ({ title, value, subtitle, icon, progress, onTap, color = '#84C
 );
 
 // School Ranking Item
-const SchoolRankingItem = ({ school, index, isUserSchool, onTap }) => (
+const SchoolRankingItem: React.FC<SchoolRankingItemProps> = ({ school, index, isUserSchool, onTap }) => (
   <motion.div
     className={`flex items-center justify-between p-4 border-b border-slate-800 last:border-b-0 cursor-pointer hover:bg-slate-800/50 transition-colors ${isUserSchool ? 'bg-slate-800/30 border-l-4 border-lime-400' : ''}`}
-    onClick={onTap}
+    onClick={() => onTap(school)}
     initial={{ opacity: 0, x: -20 }}
     animate={{ opacity: 1, x: 0 }}
     transition={{ duration: 0.3, delay: index * 0.05 }}
@@ -170,7 +265,7 @@ const SchoolRankingItem = ({ school, index, isUserSchool, onTap }) => (
 );
 
 // Subject Ranking Item
-const SubjectRankingItem = ({ subject, index, userPercentile, onTap }) => {
+const SubjectRankingItem: React.FC<SubjectRankingItemProps> = ({ subject, index, userPercentile, onTap }) => {
   const safeUserPerc = userPercentile || 0;
   const isTop = safeUserPerc >= 80;
 
@@ -211,19 +306,19 @@ const SubjectRankingItem = ({ subject, index, userPercentile, onTap }) => {
 };
 
 // School Insights Modal
-const SchoolInsightsModal = ({ school, level, isOpen, onClose }) => {
-  const [subjectData, setSubjectData] = useState([]);
-  const [loading, setLoading] = useState(true);
+const SchoolInsightsModal: React.FC<SchoolInsightsModalProps> = ({ school, level, isOpen, onClose }) => {
+  const [subjectData, setSubjectData] = useState<Subject[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     if (isOpen && school) {
-      const fetchSchoolSubjects = async () => {
+      const fetchSchoolSubjects = async (): Promise<void> => {
         try {
           const { data, error } = await supabase
             .rpc('get_school_subject_averages', { 
               p_school_code: school.school_code, 
               p_level: level 
-            });
+            }) as { data: Subject[] | null; error: any };
 
           if (error) {
             console.error('Error fetching school subject data:', error);
@@ -273,7 +368,7 @@ const SchoolInsightsModal = ({ school, level, isOpen, onClose }) => {
             </div>
             <div className="text-center">
               <p className="text-lime-400 font-semibold text-lg">{school.school_name}</p>
-              <p className="text-gray-500 text-sm">{getOrdinal(school.national_rank)} nationally</p>
+              <p className="text-gray-500 text-sm">{getOrdinal(school.national_rank ?? 1)} nationally</p>
             </div>
           </div>
 
@@ -327,13 +422,6 @@ const SchoolInsightsModal = ({ school, level, isOpen, onClose }) => {
                 <p className="text-gray-500 text-sm text-center py-8">No subject data available yet.</p>
               )}
             </div>
-
-            {/* Insights Teaser */}
-            <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-xl p-4 text-center border border-slate-600">
-              <Lock size={16} className="mx-auto text-blue-400 mb-2" />
-              <p className="text-xs text-gray-400">All data is anonymized and aggregated.</p>
-              <p className="text-xs text-gray-500 mt-1">Your privacy is our priority.</p>
-            </div>
           </div>
         </motion.div>
       </motion.div>
@@ -342,7 +430,7 @@ const SchoolInsightsModal = ({ school, level, isOpen, onClose }) => {
 };
 
 // Empty State for Rankings
-const EmptyRankingsState = () => (
+const EmptyRankingsState: React.FC = () => (
   <motion.div 
     className="flex flex-col items-center justify-center py-12 px-6 text-center bg-slate-900 border border-slate-800 rounded-2xl shadow-xl"
     initial={{ opacity: 0, scale: 0.95 }}
@@ -375,7 +463,7 @@ const EmptyRankingsState = () => (
 );
 
 // Tab Button
-const TabButton = ({ active, onClick, children, icon: Icon }) => (
+const TabButton: React.FC<TabButtonProps> = ({ active, onClick, children, icon: Icon }) => (
   <motion.button
     onClick={onClick}
     className={`flex-1 py-3 px-4 rounded-xl transition-all duration-300 font-medium text-sm relative overflow-hidden group ${
@@ -401,8 +489,8 @@ const TabButton = ({ active, onClick, children, icon: Icon }) => (
 );
 
 // Add Grade Modal with Term/Date Toggle
-const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
-  const [formData, setFormData] = useState({
+const AddGradeModal: React.FC<AddGradeModalProps> = ({ isOpen, onClose, onSubmit, subjects }) => {
+  const [formData, setFormData] = useState<FormData>({
     subject: '',
     assessment_name: '',
     score: '',
@@ -412,12 +500,12 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
     useSpecificDate: false,
     assessment_date: new Date().toISOString().split('T')[0]
   });
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState<Errors>({});
 
   const currentYear = new Date().getFullYear();
 
-  const validate = () => {
-    const newErrors = {};
+  const validate = (): Errors => {
+    const newErrors: Errors = {};
     if (!formData.subject) newErrors.subject = 'Subject is required';
     if (!formData.assessment_name) newErrors.assessment_name = 'Assessment name is required';
     if (!formData.score) newErrors.score = 'Score is required';
@@ -430,14 +518,14 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
     return newErrors;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = (): void => {
     const newErrors = validate();
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
 
-    let finalDate;
+    let finalDate: string;
     if (formData.useSpecificDate) {
       finalDate = formData.assessment_date;
     } else {
@@ -445,7 +533,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
       finalDate = `${formData.year}-${monthDay}`;
     }
 
-    const submitData = { ...formData, assessment_date: finalDate };
+    const submitData: FormData = { ...formData, assessment_date: finalDate };
     onSubmit(submitData);
     setFormData({
       subject: '',
@@ -618,22 +706,23 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
 };
 
 // Main Rankings Component
-export default function Rankings() {
-  const [user, setUser] = useState(null);
-  const [schoolRankings, setSchoolRankings] = useState([]);
-  const [subjectRankings, setSubjectRankings] = useState([]);
-  const [userPercentiles, setUserPercentiles] = useState({});
-  const [activeTab, setActiveTab] = useState('overall');
-  const [loading, setLoading] = useState(true);
-  const [isScrolled, setIsScrolled] = useState(false);
+const Rankings: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [schoolRankings, setSchoolRankings] = useState<School[]>([]);
+  const [subjectRankings, setSubjectRankings] = useState<Subject[]>([]);
+  const [userPercentiles, setUserPercentiles] = useState<Record<string, number>>({});
+  const [schoolPercentiles, setSchoolPercentiles] = useState<Record<string, number>>({});
+  const [activeTab, setActiveTab] = useState<'overall' | 'subjects'>('overall');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [isScrolled, setIsScrolled] = useState<boolean>(false);
   const router = useRouter();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [userSchoolFallback, setUserSchoolFallback] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [userSchoolFallback, setUserSchoolFallback] = useState<boolean>(false);
   // New state for school insights modal
-  const [selectedSchool, setSelectedSchool] = useState(null);
-  const [isSchoolModalOpen, setIsSchoolModalOpen] = useState(false);
+  const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
+  const [isSchoolModalOpen, setIsSchoolModalOpen] = useState<boolean>(false);
 
-  const refetchData = useCallback(async (currentUser) => {
+  const refetchData = useCallback(async (currentUser: User): Promise<void> => {
     try {
       // Validate level
       if (!currentUser?.level || typeof currentUser.level !== 'string') {
@@ -644,7 +733,7 @@ export default function Rankings() {
       // Proactively update school stats (with error handling)
       try {
         await supabase.rpc('update_school_stats_by_level', { p_level: currentUser.level });
-      } catch (rpcErr) {
+      } catch (rpcErr: any) {
         if (rpcErr.code === '400') {
           console.error('RPC failed (possibly no data):', rpcErr);
           // Continue without update; fetch existing
@@ -659,12 +748,12 @@ export default function Rankings() {
         .select('school_code, school_name, average_overall, national_rank, total_students, level')
         .eq('level', currentUser.level)
         .order('average_overall', { ascending: false })
-        .limit(20);
+        .limit(20) as { data: School[] | null; error: any };
 
       if (schoolsError) throw schoolsError;
 
       // Fallback ranks
-      const rankedSchools = (schoolsData || []).map((school, index) => ({
+      const rankedSchools: School[] = (schoolsData || []).map((school: School, index: number) => ({
         ...school,
         national_rank: school.national_rank ?? (index + 1)
       }));
@@ -677,7 +766,7 @@ export default function Rankings() {
 
       // Fetch subject rankings
       const { data: subjectsData, error: subjectsError } = await supabase
-        .rpc('get_national_subject_averages', { p_level: currentUser.level });
+        .rpc('get_national_subject_averages', { p_level: currentUser.level }) as { data: Subject[] | null; error: any };
 
       if (subjectsError) {
         console.error('Subject fetch error:', subjectsError);
@@ -688,7 +777,7 @@ export default function Rankings() {
 
       // Fetch user percentiles for each subject (national scope)
       const subjects = Object.keys(SUBJECT_EMOJIS);
-      const userPerc = {};
+      const userPerc: Record<string, number> = {};
       for (const sub of subjects) {
         try {
           const { data: percData } = await supabase
@@ -696,18 +785,40 @@ export default function Rankings() {
               p_user_id: currentUser.id, 
               p_subject: sub,
               p_school_code: null  // national
-            });
+            }) as { data: { percentile: number }[] | null };
           if (percData && percData.length > 0) {
             userPerc[sub] = percData[0].percentile;
           } else {
             userPerc[sub] = 0;
           }
         } catch (err) {
-          console.error(`Error fetching percentile for ${sub}:`, err);
+          console.error(`Error fetching national percentile for ${sub}:`, err);
           userPerc[sub] = 0;
         }
       }
       setUserPercentiles(userPerc);
+
+      // Fetch school percentiles
+      const schoolPerc: Record<string, number> = {};
+      for (const sub of subjects) {
+        try {
+          const { data: schoolPercData } = await supabase
+            .rpc('calculate_percentile', { 
+              p_user_id: currentUser.id, 
+              p_subject: sub,
+              p_school_code: currentUser.school_code  // school scope
+            }) as { data: { percentile: number }[] | null };
+          if (schoolPercData && schoolPercData.length > 0) {
+            schoolPerc[sub] = schoolPercData[0].percentile;
+          } else {
+            schoolPerc[sub] = 0;
+          }
+        } catch (err) {
+          console.error(`Error fetching school percentile for ${sub}:`, err);
+          schoolPerc[sub] = 0;
+        }
+      }
+      setSchoolPercentiles(schoolPerc);
 
     } catch (err) {
       console.error('Error refetching rankings data:', err);
@@ -718,7 +829,7 @@ export default function Rankings() {
   }, []);
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadData = async (): Promise<void> => {
       try {
         let { data: { session } } = await supabase.auth.getSession();
 
@@ -729,7 +840,7 @@ export default function Rankings() {
         }
 
         const localUserStr = localStorage.getItem('outrankUser');
-        let localUser = localUserStr ? JSON.parse(localUserStr) : {
+        let localUser: Partial<User> = localUserStr ? JSON.parse(localUserStr) : {
           nickname: 'Student',
           school_code: 'RI',
           school_name: 'Raffles Institution',
@@ -741,13 +852,16 @@ export default function Rankings() {
           .from('users')
           .select('*')
           .eq('id', session.user.id)
-          .single();
+          .single() as { data: User | null; error: any };
 
-        let dbUser;
+        let dbUser: User;
         if (fetchError && fetchError.code === 'PGRST116') {
           dbUser = {
             id: session.user.id,
-            ...localUser,
+            nickname: localUser.nickname || 'Student',
+            school_code: localUser.school_code || 'RI',
+            school_name: localUser.school_name || 'Raffles Institution',
+            level: localUser.level || 'sec_4',
             opted_in_cohort: true,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -759,7 +873,7 @@ export default function Rankings() {
           if (insertError) throw insertError;
         } else if (existingUser) {
           dbUser = existingUser;
-          const updates = {};
+          const updates: Partial<User> = {};
           if (localUser.nickname && localUser.nickname !== dbUser.nickname) updates.nickname = localUser.nickname;
           if (localUser.school_code && localUser.school_code !== dbUser.school_code) {
             updates.school_code = localUser.school_code;
@@ -779,7 +893,7 @@ export default function Rankings() {
           throw new Error('User fetch failed');
         }
 
-        if (localUser.id !== session.user.id) {
+        if ('id' in localUser && localUser.id !== session.user.id) {
           localUser.id = session.user.id;
           localStorage.setItem('outrankUser', JSON.stringify(localUser));
         }
@@ -798,7 +912,7 @@ export default function Rankings() {
 
   // Scroll listener
   useEffect(() => {
-    const handleScroll = () => {
+    const handleScroll = (): void => {
       setIsScrolled(window.scrollY > 50);
     };
 
@@ -806,7 +920,7 @@ export default function Rankings() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const handleAddGrade = async (formData) => {
+  const handleAddGrade = async (formData: FormData): Promise<void> => {
     if (!user) return;
 
     const newGrade = {
@@ -841,10 +955,27 @@ export default function Rankings() {
   };
 
   // New handler for school tap
-  const handleSchoolTap = (school) => {
+  const handleSchoolTap = (school: School): void => {
     setSelectedSchool(school);
     setIsSchoolModalOpen(true);
   };
+
+  // Derived stats
+  const userSchool = schoolRankings.find(s => s.school_code === user?.school_code);
+  const safeSchoolRank = userSchool?.national_rank || 1;
+  const safeSchoolAvg = userSchool?.average_overall || 0;
+  const safeSchoolStudents = userSchool?.total_students || 0;
+
+  const nationalAvgPerc = Object.values(userPercentiles).length > 0 
+    ? Object.values(userPercentiles).reduce((a, b) => a + b, 0) / Object.values(userPercentiles).length 
+    : 0;
+  const schoolAvgPerc = Object.values(schoolPercentiles).length > 0 
+    ? Object.values(schoolPercentiles).reduce((a, b) => a + b, 0) / Object.values(schoolPercentiles).length 
+    : 0;
+
+  const bestSubject = Object.entries(schoolPercentiles).reduce((a, b) => (b[1] > a[1] ? b : a), ['', 0] as [string, number]);
+  const subjectsAboveSchoolAvg = Object.values(schoolPercentiles).filter(p => p > 50).length;
+  const nationalRankEstimate = Math.round(100 - nationalAvgPerc); // Rough estimate: higher perc = lower rank number
 
   if (loading) {
     return (
@@ -876,11 +1007,6 @@ export default function Rankings() {
     );
   }
 
-  const userSchool = schoolRankings.find(s => s.school_code === user?.school_code);
-  const safeSchoolRank = userSchool?.national_rank || 1;
-  const safeSchoolAvg = userSchool?.average_overall || 0;
-  const safeSchoolStudents = userSchool?.total_students || 0;
-
   return (
     <div className="min-h-screen bg-slate-900 text-white pb-24">
       <Header user={user} isScrolled={isScrolled} activeTab={activeTab} />
@@ -908,16 +1034,61 @@ export default function Rankings() {
           {activeTab === 'overall' && (
             <>
               {/* Your Position Cards */}
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <StatCard
                   title="Your School Rank"
                   value={userSchoolFallback ? 'N/A' : getOrdinal(safeSchoolRank)}
                   subtitle={userSchoolFallback ? 'Add grades to unlock rankings' : `${safeSchoolStudents} students`}
                   progress={userSchoolFallback ? 0 : safeSchoolAvg}
                   icon={<Crown size={18} />}
-                  color={userSchoolFallback ? '#6B7280' : '#A855F7'}  // Gray if fallback
+                  color={userSchoolFallback ? '#6B7280' : '#A855F7'}
                   onTap={() => {}}
-                />  
+                />
+                <StatCard
+                  title="School Percentile"
+                  value={`${schoolAvgPerc.toFixed(0)}%`}
+                  subtitle="vs peers in school"
+                  progress={schoolAvgPerc}
+                  icon={<Users size={18} />}
+                  color="#10B981"
+                  onTap={() => {}}
+                />
+                <StatCard
+                  title="National Percentile"
+                  value={`${nationalAvgPerc.toFixed(0)}%`}
+                  subtitle="vs all students"
+                  progress={nationalAvgPerc}
+                  icon={<TrendingUp size={18} />}
+                  color="#3B82F6"
+                  onTap={() => {}}
+                />
+                <StatCard
+                  title="Est. National Rank"
+                  value={userSchoolFallback ? 'N/A' : getOrdinal(nationalRankEstimate)}
+                  subtitle="Based on avg percentile"
+                  progress={nationalAvgPerc}
+                  icon={<Trophy size={18} />}
+                  color="#F59E0B"
+                  onTap={() => {}}
+                />
+                <StatCard
+                  title="Best Subject"
+                  value={bestSubject[0] ? `${SUBJECT_EMOJIS[bestSubject[0]]} ${bestSubject[0].charAt(0).toUpperCase() + bestSubject[0].slice(1)}` : 'N/A'}
+                  subtitle={`${bestSubject[1].toFixed(0)}% in school`}
+                  progress={bestSubject[1]}
+                  icon={<Sparkles size={18} />}
+                  color="#EC4899"
+                  onTap={() => {}}
+                />
+                <StatCard
+                  title="Above School Avg"
+                  value={`${subjectsAboveSchoolAvg}/${Object.keys(schoolPercentiles).length}`}
+                  subtitle="Subjects beating avg"
+                  progress={(subjectsAboveSchoolAvg / Object.keys(schoolPercentiles).length) * 100}
+                  icon={<TrendingUp size={18} />}
+                  color="#8B5CF6"
+                  onTap={() => {}}
+                />
               </div>
 
               {/* School Rankings Chart */}
@@ -977,7 +1148,7 @@ export default function Rankings() {
                         school={school}
                         index={index}
                         isUserSchool={school.school_code === user?.school_code}
-                        onTap={() => handleSchoolTap(school)}
+                        onTap={handleSchoolTap}
                       />
                     ))}
                   </div>
@@ -1024,7 +1195,7 @@ export default function Rankings() {
       {/* New School Insights Modal */}
       <SchoolInsightsModal
         school={selectedSchool}
-        level={user?.level}
+        level={user?.level || ''}
         isOpen={isSchoolModalOpen}
         onClose={() => setIsSchoolModalOpen(false)}
       />
@@ -1111,4 +1282,6 @@ export default function Rankings() {
       `}</style>
     </div>
   );
-}
+};
+
+export default Rankings;

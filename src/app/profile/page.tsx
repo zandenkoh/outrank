@@ -5,12 +5,94 @@ import { ChevronLeft, User, School, GraduationCap, ShieldCheck, ShieldOff, Save,
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
-const SCHOOLS = {
+interface School {
+  code: string;
+  name: string;
+}
+
+interface User {
+  id: string;
+  nickname: string;
+  school_code: string;
+  school_name: string;
+  level: string;
+  avatar_seed?: string;
+  opted_in_cohort: boolean;
+  created_at: string;
+  updated_at: string;
+  last_active_at: string;
+}
+
+interface Grade {
+  id?: string;
+  user_id: string;
+  subject: string;
+  assessment_name: string;
+  score: number;
+  max_score: number;
+  assessment_date: string;
+  percentage: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface UserStats {
+  overall_average: number;
+  total_grades: number;
+  subjects_count: number;
+  best_subject: string | null;
+  best_subject_average: number;
+  most_improved_subject: string | null;
+  improvement_amount: number;
+  consistency_score: number;
+}
+
+interface ProfileFormData {
+  nickname: string;
+  school_code: string;
+  school_name: string;
+  level: string;
+  opted_in_cohort: boolean;
+  twoFA: boolean;
+  notifications: {
+    email: boolean;
+    push: boolean;
+    inapp: boolean;
+  };
+  share_school: boolean;
+  share_national: boolean;
+  data_retention: string;
+  sessions: Array<{
+    device: string;
+    location: string;
+    lastActive: string;
+  }>;
+}
+
+interface AddGradeForm {
+  subject: string;
+  assessment_name: string;
+  score: string;
+  max_score: string;
+  term: number;
+  year: number;
+  useSpecificDate: boolean;
+  assessment_date: string;
+}
+
+type LevelOption = { value: string; label: string };
+
+type SchoolsRecord = Record<'secondary' | 'jc' | 'ib', School[]>;
+
+type SubjectEmojisRecord = Record<string, string>;
+
+const SCHOOLS: SchoolsRecord = {
   secondary: [
     { code: 'RI', name: 'Raffles Institution' },
     { code: 'HCI', name: 'Hwa Chong Institution' },
@@ -146,7 +228,7 @@ const SCHOOLS = {
   ]
 };
 
-const SUBJECT_EMOJIS = {
+const SUBJECT_EMOJIS: SubjectEmojisRecord = {
   mathematics: '📐',
   physics: '⚡',
   chemistry: '🧪',
@@ -159,7 +241,7 @@ const SUBJECT_EMOJIS = {
   computing: '💻'
 };
 
-const TERM_END_DATES = {
+const TERM_END_DATES: Record<number, string> = {
   1: '03-31', // March 31
   2: '06-30', // June 30
   3: '09-30', // September 30
@@ -167,31 +249,37 @@ const TERM_END_DATES = {
 };
 
 // Utility functions
-const formatDate = (date) => {
+const formatDate = (date: Date | string): string => {
   const d = new Date(date);
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 };
 
-const generateAvatarSeed = () => {
+const generateAvatarSeed = (): string => {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 };
 
-const getAvailableSchools = (level) => {
+const getAvailableSchools = (level: string): School[] => {
   if (level.startsWith('sec_')) return SCHOOLS.secondary;
   if (level.startsWith('jc_')) return SCHOOLS.jc;
   return [];
 };
 
-const stdDev = (values) => {
+const stdDev = (values: number[]): number => {
   if (values.length === 0) return 0;
-  const avg = values.reduce((a, b) => a + b) / values.length;
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
   const sqDiff = values.map(v => Math.pow(v - avg, 2));
-  const variance = sqDiff.reduce((a, b) => a + b) / values.length;
+  const variance = sqDiff.reduce((a, b) => a + b, 0) / values.length;
   return Math.sqrt(variance);
 };
 
 // Header Component
-const Header = ({ user, date = new Date(), isScrolled = false }) => (
+interface HeaderProps {
+  user?: User | null;
+  date?: Date;
+  isScrolled?: boolean;
+}
+
+const Header: React.FC<HeaderProps> = ({ user, date = new Date(), isScrolled = false }) => (
   <motion.div 
     className={`sticky top-0 bg-slate-900/95 backdrop-blur-xl z-50 px-5 transition-all duration-300 ease-out border-b border-slate-800 ${isScrolled ? 'py-3' : 'pt-6 pb-4'}`}
     initial={false}
@@ -231,7 +319,15 @@ const Header = ({ user, date = new Date(), isScrolled = false }) => (
 );
 
 // Stat Card Component
-const StatCard = ({ title, value, subtitle, icon: Icon, color = '#10B981' }) => (
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  subtitle: string;
+  icon: React.ComponentType<{ size?: number; style?: React.CSSProperties; className?: string }>;
+  color?: string;
+}
+
+const StatCard: React.FC<StatCardProps> = ({ title, value, subtitle, icon: Icon, color = '#10B981' }) => (
   <motion.div
     className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex-1 relative overflow-hidden shadow-lg"
     initial={{ opacity: 0, y: 20 }}
@@ -250,10 +346,17 @@ const StatCard = ({ title, value, subtitle, icon: Icon, color = '#10B981' }) => 
 );
 
 // Toggle Switch Component
-const ToggleSwitch = ({ checked, onChange, label }) => (
+interface ToggleSwitchProps {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: React.ReactNode;
+}
+
+const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, label }) => (
   <div className="flex items-center justify-between">
     <span className="text-sm font-medium text-gray-300">{label}</span>
     <motion.button
+      type="button"
       className={`relative w-10 h-6 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-400/50 ${checked ? 'bg-lime-600' : 'bg-slate-700'}`}
       onClick={() => onChange(!checked)}
       whileTap={{ scale: 0.98 }}
@@ -268,7 +371,15 @@ const ToggleSwitch = ({ checked, onChange, label }) => (
 );
 
 // Editable Input
-const EditableInput = ({ value, onChange, placeholder, type = 'text', error }) => (
+interface EditableInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: string;
+  error?: string;
+}
+
+const EditableInput: React.FC<EditableInputProps> = ({ value, onChange, placeholder, type = 'text', error }) => (
   <div className="relative">
     <input
       type={type}
@@ -283,8 +394,15 @@ const EditableInput = ({ value, onChange, placeholder, type = 'text', error }) =
   </div>
 );
 
-const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
-  const [formData, setFormData] = useState({
+interface AddGradeModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (data: AddGradeForm) => void;
+  subjects: string[];
+}
+
+const AddGradeModal: React.FC<AddGradeModalProps> = ({ isOpen, onClose, onSubmit, subjects }) => {
+  const [formData, setFormData] = useState<AddGradeForm>({
     subject: '',
     assessment_name: '',
     score: '',
@@ -294,12 +412,12 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
     useSpecificDate: false,
     assessment_date: new Date().toISOString().split('T')[0]
   });
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const currentYear = new Date().getFullYear();
 
-  const validate = () => {
-    const newErrors = {};
+  const validate = (): Record<string, string> => {
+    const newErrors: Record<string, string> = {};
     if (!formData.subject) newErrors.subject = 'Subject is required';
     if (!formData.assessment_name) newErrors.assessment_name = 'Assessment name is required';
     if (!formData.score) newErrors.score = 'Score is required';
@@ -312,14 +430,14 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
     return newErrors;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = (): void => {
     const newErrors = validate();
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
 
-    let finalDate;
+    let finalDate: string;
     if (formData.useSpecificDate) {
       finalDate = formData.assessment_date;
     } else {
@@ -327,7 +445,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
       finalDate = `${formData.year}-${monthDay}`;
     }
 
-    const submitData = { ...formData, assessment_date: finalDate };
+    const submitData: AddGradeForm = { ...formData, assessment_date: finalDate };
     onSubmit(submitData);
     setFormData({
       subject: '',
@@ -367,6 +485,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
             </div>
             <h2 className="text-2xl font-bold text-white text-center mb-4">Add Grade</h2>
             <button 
+              type="button"
               onClick={onClose} 
               className="absolute top-6 right-4 text-gray-400 hover:text-white transition-colors"
             >
@@ -458,6 +577,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
                   </div>
                   {errors.term && <p className="text-red-400 text-xs mt-1">{errors.term}</p>}
                   <motion.button
+                    type="button"
                     onClick={() => setFormData(prev => ({ ...prev, useSpecificDate: true }))}
                     className="w-full text-xs text-lime-400 hover:text-lime-300 flex items-center justify-center gap-1"
                     whileTap={{ scale: 0.98 }}
@@ -474,6 +594,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
                     className="w-full bg-slate-800 text-white border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50"
                   />
                   <motion.button
+                    type="button"
                     onClick={() => setFormData(prev => ({ ...prev, useSpecificDate: false }))}
                     className="w-full text-xs text-lime-400 hover:text-lime-300 flex items-center justify-center gap-1 mt-2"
                     whileTap={{ scale: 0.98 }}
@@ -485,6 +606,7 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
             </div>
 
             <motion.button
+              type="button"
               onClick={handleSubmit}
               className="w-full bg-lime-400 text-black font-bold rounded-xl py-4 text-base shadow-xl"
               whileTap={{ scale: 0.98 }}
@@ -500,19 +622,34 @@ const AddGradeModal = ({ isOpen, onClose, onSubmit, subjects }) => {
 };
 
 // Main Profile Component
-export default function Profile() {
+const Profile: React.FC = () => {
   const router = useRouter();
-  const [user, setUser] = useState(null);
-  const [userStats, setUserStats] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState({});
-  const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [userStats, setUserStats] = useState<UserStats | null>(null);
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [formData, setFormData] = useState<ProfileFormData>({
+    nickname: '',
+    school_code: '',
+    school_name: '',
+    level: '',
+    opted_in_cohort: true,
+    twoFA: false,
+    notifications: { email: true, push: true, inapp: true },
+    share_school: true,
+    share_national: true,
+    data_retention: '1year',
+    sessions: [
+      { device: 'iPhone 15', location: 'Singapore', lastActive: '2025-10-25' },
+      { device: 'Chrome on Mac', location: 'Singapore', lastActive: '2025-10-28' }
+    ]
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [isScrolled, setIsScrolled] = useState<boolean>(false);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
-  const levels = [
+  const levels: LevelOption[] = [
     { value: 'sec_1', label: 'Secondary 1' },
     { value: 'sec_2', label: 'Secondary 2' },
     { value: 'sec_3', label: 'Secondary 3' },
@@ -521,7 +658,7 @@ export default function Profile() {
     { value: 'jc_2', label: 'JC 2' }
   ];
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (): Promise<void> => {
     try {
       let { data: { session } } = await supabase.auth.getSession();
 
@@ -532,7 +669,7 @@ export default function Profile() {
       }
 
       const localUserStr = localStorage.getItem('outrankUser');
-      const localUser = localUserStr ? JSON.parse(localUserStr) : {
+      const localUser: Partial<User> = localUserStr ? JSON.parse(localUserStr) : {
         nickname: 'Student',
         school_code: 'RI',
         school_name: 'Raffles Institution',
@@ -546,15 +683,19 @@ export default function Profile() {
         .eq('id', session.user.id)
         .single();
 
-      let dbUser;
+      let dbUser: User;
       if (fetchError && fetchError.code === 'PGRST116') {
         // Generate avatar seed if needed
-        const avatarSeed = localUser.avatar_seed || generateAvatarSeed();
+        const avatarSeed = (localUser as Partial<User>).avatar_seed || generateAvatarSeed();
         dbUser = {
           id: session.user.id,
           ...localUser,
+          nickname: (localUser as Partial<User>).nickname || 'Student',
+          school_code: (localUser as Partial<User>).school_code || 'RI',
+          school_name: (localUser as Partial<User>).school_name || 'Raffles Institution',
+          level: (localUser as Partial<User>).level || 'sec_4',
           avatar_seed: avatarSeed,
-          opted_in_cohort: localUser.opted_in_cohort !== undefined ? localUser.opted_in_cohort : true,
+          opted_in_cohort: (localUser as Partial<User>).opted_in_cohort !== undefined ? (localUser as Partial<User>).opted_in_cohort : true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           last_active_at: new Date().toISOString()
@@ -566,13 +707,13 @@ export default function Profile() {
       } else if (existingUser) {
         dbUser = existingUser;
         // Sync local changes
-        const updates = {};
-        if (localUser.nickname && localUser.nickname !== dbUser.nickname) updates.nickname = localUser.nickname;
-        if (localUser.school_code && localUser.school_code !== dbUser.school_code) {
-          updates.school_code = localUser.school_code;
-          updates.school_name = localUser.school_name;
+        const updates: Partial<User> = {};
+        if ((localUser as Partial<User>).nickname && (localUser as Partial<User>).nickname !== dbUser.nickname) updates.nickname = (localUser as Partial<User>).nickname;
+        if ((localUser as Partial<User>).school_code && (localUser as Partial<User>).school_code !== dbUser.school_code) {
+          updates.school_code = (localUser as Partial<User>).school_code;
+          updates.school_name = (localUser as Partial<User>).school_name;
         }
-        if (localUser.level && localUser.level !== dbUser.level) updates.level = localUser.level;
+        if ((localUser as Partial<User>).level && (localUser as Partial<User>).level !== dbUser.level) updates.level = (localUser as Partial<User>).level;
         if (!dbUser.avatar_seed) {
           const newSeed = generateAvatarSeed();
           updates.avatar_seed = newSeed;
@@ -597,10 +738,8 @@ export default function Profile() {
       }
 
       // Update localStorage
-      if (localUser.id !== session.user.id) {
-        localUser.id = session.user.id;
-        localStorage.setItem('outrankUser', JSON.stringify(localUser));
-      }
+      const updatedLocalUser = { ...localUser, id: session.user.id };
+      localStorage.setItem('outrankUser', JSON.stringify(updatedLocalUser));
 
       // Load local settings
       const localSettingsStr = localStorage.getItem('outrankLocalSettings');
@@ -619,15 +758,12 @@ export default function Profile() {
         school_name: dbUser.school_name,
         level: dbUser.level,
         opted_in_cohort: dbUser.opted_in_cohort,
-        twoFA: localSettings.twoFA,
-        notifications: localSettings.notifications,
-        share_school: localSettings.share_school,
-        share_national: localSettings.share_national,
-        data_retention: localSettings.data_retention,
-        sessions: [
-          { device: 'iPhone 15', location: 'Singapore', lastActive: '2025-10-25' },
-          { device: 'Chrome on Mac', location: 'Singapore', lastActive: '2025-10-28' }
-        ]
+        twoFA: (localSettings as Partial<ProfileFormData>).twoFA as boolean || false,
+        notifications: (localSettings as Partial<ProfileFormData>).notifications as ProfileFormData['notifications'] || { email: true, push: true, inapp: true },
+        share_school: (localSettings as Partial<ProfileFormData>).share_school as boolean || true,
+        share_national: (localSettings as Partial<ProfileFormData>).share_national as boolean || true,
+        data_retention: (localSettings as Partial<ProfileFormData>).data_retention as string || '1year',
+        sessions: formData.sessions // Keep existing
       });
 
     } catch (err) {
@@ -637,7 +773,7 @@ export default function Profile() {
     }
   }, []);
 
-  const loadStats = useCallback(async () => {
+  const loadStats = useCallback(async (): Promise<void> => {
     if (!user) return;
     try {
       const { data: fetchedGrades } = await supabase
@@ -646,7 +782,7 @@ export default function Profile() {
         .eq('user_id', user.id)
         .order('assessment_date', { ascending: true });
 
-      const currentGrades = fetchedGrades || [];
+      const currentGrades: Grade[] = fetchedGrades || [];
 
       if (currentGrades.length === 0) {
         setUserStats({
@@ -666,7 +802,7 @@ export default function Profile() {
       const overallAvg = allPercentages.reduce((sum, p) => sum + p, 0) / allPercentages.length;
       const totalGrades = currentGrades.length;
 
-      const subjects = {};
+      const subjects: Record<string, { percentages: number[]; count: number }> = {};
       currentGrades.forEach(g => {
         if (!subjects[g.subject]) {
           subjects[g.subject] = { percentages: [], count: 0 };
@@ -677,13 +813,13 @@ export default function Profile() {
 
       const subjectsCount = Object.keys(subjects).length;
 
-      let bestSubject = null, bestAvg = 0;
-      let mostImproved = null, maxImp = 0;
+      let bestSubject: string | null = null, bestAvg = 0;
+      let mostImproved: string | null = null, maxImp = 0;
 
-      for (let sub in subjects) {
+      for (const sub in subjects) {
         const subPercentages = subjects[sub].percentages;
         const avg = subPercentages.reduce((s, v) => s + v, 0) / subPercentages.length;
-        const subGrades = currentGrades.filter(g => g.subject === sub).sort((a, b) => new Date(a.assessment_date) - new Date(b.assessment_date));
+        const subGrades = currentGrades.filter(g => g.subject === sub).sort((a, b) => new Date(a.assessment_date).getTime() - new Date(b.assessment_date).getTime());
         const first = subGrades[0]?.percentage || 0;
         const last = subGrades[subGrades.length - 1]?.percentage || 0;
         const trendAmount = Math.abs(last - first);
@@ -718,6 +854,10 @@ export default function Profile() {
         overall_average: 0,
         total_grades: 0,
         subjects_count: 0,
+        best_subject: null,
+        best_subject_average: 0,
+        most_improved_subject: null,
+        improvement_amount: 0,
         consistency_score: 0
       });
     }
@@ -747,11 +887,11 @@ export default function Profile() {
         }));
       }
     }
-  }, [formData.level, isEditing]);
+  }, [formData.level, isEditing, formData.school_code]);
 
   // Scroll listener
   useEffect(() => {
-    const handleScroll = () => {
+    const handleScroll = (): void => {
       setIsScrolled(window.scrollY > 50);
     };
 
@@ -759,8 +899,8 @@ export default function Profile() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const validateForm = () => {
-    const newErrors = {};
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
     if (!formData.nickname || formData.nickname.length < 2) {
       newErrors.nickname = 'Nickname must be at least 2 characters';
     }
@@ -777,8 +917,8 @@ export default function Profile() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const saveLocalSettings = useCallback(() => {
-    const local = {
+  const saveLocalSettings = useCallback((): void => {
+    const local: Partial<ProfileFormData> = {
       twoFA: formData.twoFA,
       notifications: formData.notifications,
       share_school: formData.share_school,
@@ -788,12 +928,12 @@ export default function Profile() {
     localStorage.setItem('outrankLocalSettings', JSON.stringify(local));
   }, [formData]);
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<void> => {
     if (!validateForm()) return;
 
     setSaving(true);
     try {
-      const updates = {
+      const updates: Partial<User> = {
         nickname: formData.nickname,
         school_code: formData.school_code,
         school_name: formData.school_name,
@@ -808,7 +948,7 @@ export default function Profile() {
         .from('users')
         .select('id', { count: 'exact', head: true })
         .eq('nickname', formData.nickname)
-        .neq('id', user.id);
+        .neq('id', user!.id);
 
       if (nickCount > 0) {
         setErrors({ nickname: 'Nickname already taken' });
@@ -818,15 +958,15 @@ export default function Profile() {
       const { error } = await supabase
         .from('users')
         .update(updates)
-        .eq('id', user.id);
+        .eq('id', user!.id);
 
       if (error) throw error;
 
       // Update localStorage
-      const updatedLocal = { ...JSON.parse(localStorage.getItem('outrankUser') || '{}'), ...formData };
+      const updatedLocal = { ...(JSON.parse(localStorage.getItem('outrankUser') || '{}')), ...formData };
       localStorage.setItem('outrankUser', JSON.stringify(updatedLocal));
 
-      setUser({ ...user, ...formData });
+      setUser({ ...user!, ...formData });
       setIsEditing(false);
       setErrors({});
       saveLocalSettings();
@@ -842,13 +982,13 @@ export default function Profile() {
     }
   };
 
-  const handleCancel = () => {
+  const handleCancel = (): void => {
     setFormData({
-      nickname: user.nickname,
-      school_code: user.school_code,
-      school_name: user.school_name,
-      level: user.level,
-      opted_in_cohort: user.opted_in_cohort,
+      nickname: user!.nickname,
+      school_code: user!.school_code,
+      school_name: user!.school_name,
+      level: user!.level,
+      opted_in_cohort: user!.opted_in_cohort,
       twoFA: formData.twoFA, // Keep local
       notifications: formData.notifications,
       share_school: formData.share_school,
@@ -861,16 +1001,21 @@ export default function Profile() {
     saveLocalSettings();
   };
 
-  const handleAddGrade = async (formData) => {
+  const handleAddGrade = async (submitFormData: AddGradeForm): Promise<void> => {
     if (!user) return;
 
-    const newGrade = {
+    const scoreNum = parseFloat(submitFormData.score);
+    const maxScoreNum = parseFloat(submitFormData.max_score);
+    const percentage = (scoreNum / maxScoreNum) * 100;
+
+    const newGrade: Omit<Grade, 'id'> = {
       user_id: user.id,
-      subject: formData.subject,
-      assessment_name: formData.assessment_name,
-      score: parseFloat(formData.score),
-      max_score: parseFloat(formData.max_score),
-      assessment_date: formData.assessment_date,
+      subject: submitFormData.subject,
+      assessment_name: submitFormData.assessment_name,
+      score: scoreNum,
+      max_score: maxScoreNum,
+      assessment_date: submitFormData.assessment_date,
+      percentage,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -895,18 +1040,18 @@ export default function Profile() {
     await loadStats();
   };
 
-  const handleChangePassword = () => {
+  const handleChangePassword = (): void => {
     // Mock
     alert('Password updated successfully! (Demo mode)');
   };
 
-  const handleLogoutAll = () => {
+  const handleLogoutAll = (): void => {
     // Mock
     setFormData(prev => ({ ...prev, sessions: [] }));
     alert('All other sessions logged out! (Demo mode)');
   };
 
-  const handleExportData = () => {
+  const handleExportData = (): void => {
     // Mock export
     const dataStr = JSON.stringify({ user: formData, stats: userStats }, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
@@ -917,7 +1062,7 @@ export default function Profile() {
     link.click();
   };
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = (): void => {
     // Mock
     if (confirm('Delete account? (Demo mode - no real deletion)')) {
       alert('Account deleted! (Demo mode)');
@@ -999,13 +1144,14 @@ export default function Profile() {
             )}
             {isEditing && (
               <motion.button
+                type="button"
                 className="absolute -top-2 -right-2 bg-lime-600 rounded-full p-1 shadow-lg"
                 whileTap={{ scale: 0.9 }}
                 onClick={() => {
                   const newSeed = generateAvatarSeed();
-                  setUser({ ...user, avatar_seed: newSeed });
+                  setUser({ ...user!, avatar_seed: newSeed });
                   // Update DB
-                  supabase.from('users').update({ avatar_seed: newSeed }).eq('id', user.id);
+                  supabase.from('users').update({ avatar_seed: newSeed }).eq('id', user!.id);
                 }}
               >
                 <Edit3 size={14} className="text-white" />
@@ -1064,6 +1210,7 @@ export default function Profile() {
               </h3>
               {!isEditing ? (
                 <motion.button
+                  type="button"
                   onClick={() => setIsEditing(true)}
                   className="flex items-center text-lime-400 hover:text-lime-300 text-sm font-medium"
                   whileTap={{ scale: 0.98 }}
@@ -1074,6 +1221,7 @@ export default function Profile() {
               ) : (
                 <div className="flex space-x-2">
                   <motion.button
+                    type="button"
                     onClick={handleCancel}
                     className="text-gray-400 hover:text-gray-300 p-1"
                     whileTap={{ scale: 0.98 }}
@@ -1081,6 +1229,7 @@ export default function Profile() {
                     <X size={20} />
                   </motion.button>
                   <motion.button
+                    type="button"
                     onClick={handleSave}
                     disabled={!hasChanges || saving}
                     className={`flex items-center px-3 py-1 rounded-lg text-sm font-medium transition-all ${
@@ -1251,6 +1400,7 @@ export default function Profile() {
         transition={{ duration: 0.5, ease: "easeOut" }}
       >
         <motion.button 
+          type="button"
           className="flex flex-col items-center text-xs font-medium text-gray-400" 
           whileTap={{ scale: 0.9 }}
           onClick={() => router.push('/dashboard')}
@@ -1259,6 +1409,7 @@ export default function Profile() {
           <span>Dashboard</span>
         </motion.button>
         <motion.button 
+          type="button"
           className="flex flex-col items-center text-xs font-medium text-gray-400" 
           whileTap={{ scale: 0.9 }}
           onClick={() => router.push('/rankings')}
@@ -1267,6 +1418,7 @@ export default function Profile() {
           <span>Rankings</span>
         </motion.button>
         <motion.button 
+          type="button"
           className="w-16 h-16 bg-lime-400 rounded-full flex items-center justify-center -mt-8 shadow-2xl border-4 border-slate-900 col-span-1" 
           onClick={() => setIsModalOpen(true)}
           whileTap={{ scale: 0.9 }}
@@ -1275,6 +1427,7 @@ export default function Profile() {
           <Plus size={28} className="text-black" />
         </motion.button>
         <motion.button 
+          type="button"
           className="flex flex-col items-center text-xs font-medium text-gray-400" 
           whileTap={{ scale: 0.9 }}
           onClick={() => router.push('/history')}
@@ -1283,6 +1436,7 @@ export default function Profile() {
           <span>History</span>
         </motion.button>
         <motion.button 
+          type="button"
           className="flex flex-col items-center text-xs font-medium text-lime-400" 
           whileTap={{ scale: 0.9 }}
           onClick={() => router.push('/profile')}
@@ -1320,4 +1474,6 @@ export default function Profile() {
       `}</style>
     </div>
   );
-}
+};
+
+export default Profile;
