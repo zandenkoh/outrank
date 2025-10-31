@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type AuthError } from '@supabase/supabase-js';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, Mail, GraduationCap, Sparkles, ArrowRight } from 'lucide-react';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -49,11 +49,12 @@ const VerifyEmail: React.FC = () => {
         } else {
           throw new Error('Verification failed. Please try again.');
         }
-      } catch (err: any) {
-        console.error('Verification error:', err);
-        setStatus('error');
-        setError(err.message || 'Verification failed. Please try again.');
-      }
+      } catch (err: unknown) {
+  console.error('Verification error:', err);
+  const errorMessage = err instanceof Error ? err.message : 'Verification failed. Please try again.';
+  setStatus('error');
+  setError(errorMessage);
+}
     };
 
     verifyEmail();
