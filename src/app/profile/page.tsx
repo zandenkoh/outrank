@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, User, School, GraduationCap, ShieldCheck, ShieldOff, Save, Edit3, X, Sparkles, BarChart3, Trophy, Calendar, Plus, Filter, Search, Key, Bell, Download, Trash2 } from 'lucide-react';
+import { ChevronLeft, User, School, GraduationCap, ShieldCheck, ShieldOff, Save, Edit3, X, Sparkles, BarChart3, Trophy, Calendar, Plus, Filter, Search, Key, Bell, Download, Trash2, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
@@ -91,6 +91,8 @@ type LevelOption = { value: string; label: string };
 type SchoolsRecord = Record<'secondary' | 'jc' | 'ib', School[]>;
 
 type SubjectEmojisRecord = Record<string, string>;
+
+type AuthStatus = 'anonymous' | 'pending' | 'verified';
 
 const SCHOOLS: SchoolsRecord = {
   secondary: [
@@ -377,18 +379,17 @@ interface EditableInputProps {
   placeholder?: string;
   type?: string;
   error?: string;
+  className?: string;
 }
 
-const EditableInput: React.FC<EditableInputProps> = ({ value, onChange, placeholder, type = 'text', error }) => (
+const EditableInput: React.FC<EditableInputProps> = ({ value, onChange, placeholder, type = 'text', error, className = '' }) => (
   <div className="relative">
     <input
       type={type}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className={`w-full bg-slate-800 text-white border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all pr-10 ${
-        error ? 'border-red-500' : 'border-slate-700'
-      }`}
+      className={`w-full bg-slate-800 text-white border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all pr-10 ${error ? 'border-red-500' : 'border-slate-700'} ${className}`}
     />
     {error && <p className="text-red-400 text-xs mt-1 absolute -bottom-5 left-0">{error}</p>}
   </div>
@@ -413,6 +414,7 @@ const AddGradeModal: React.FC<AddGradeModalProps> = ({ isOpen, onClose, onSubmit
     assessment_date: new Date().toISOString().split('T')[0]
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
 
   const currentYear = new Date().getFullYear();
 
@@ -430,34 +432,39 @@ const AddGradeModal: React.FC<AddGradeModalProps> = ({ isOpen, onClose, onSubmit
     return newErrors;
   };
 
-  const handleSubmit = (): void => {
+  const handleSubmit = async (): Promise<void> => {
     const newErrors = validate();
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
 
-    let finalDate: string;
-    if (formData.useSpecificDate) {
-      finalDate = formData.assessment_date;
-    } else {
-      const monthDay = TERM_END_DATES[formData.term];
-      finalDate = `${formData.year}-${monthDay}`;
-    }
-
-    const submitData: AddGradeForm = { ...formData, assessment_date: finalDate };
-    onSubmit(submitData);
-    setFormData({
-      subject: '',
-      assessment_name: '',
-      score: '',
-      max_score: '100',
-      term: 1,
-      year: currentYear,
-      useSpecificDate: false,
-      assessment_date: new Date().toISOString().split('T')[0]
-    });
+    setLoading(true);
     setErrors({});
+    try {
+      // Determine assessment_date if user picked a term/year instead of a specific date
+      let assessmentDate = formData.assessment_date;
+      if (!formData.useSpecificDate) {
+        const termKey = formData.term in TERM_END_DATES ? formData.term : 4;
+        const mmdd = TERM_END_DATES[termKey] || '12-31';
+        // ensure YYYY-MM-DD format
+        assessmentDate = `${formData.year}-${mmdd}`;
+      }
+
+      await onSubmit({
+        ...formData,
+        assessment_date: assessmentDate
+      });
+
+      // clear errors and close modal on success
+      setErrors({});
+      onClose();
+    } catch (err: unknown) {
+      console.error('Add grade error:', err);
+      setErrors({ general: 'Failed to add grade. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -612,8 +619,358 @@ const AddGradeModal: React.FC<AddGradeModalProps> = ({ isOpen, onClose, onSubmit
               whileTap={{ scale: 0.98 }}
               whileHover={{ scale: 1.02 }}
             >
-              Add Grade
+              {loading ? 'Adding...' : 'Add Grade'}
             </motion.button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+interface AuthModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  type: 'create' | 'confirm' | 'change' | 'signin';
+  email?: string;
+  onSuccess: () => void;
+}
+
+const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, type, email: prefilledEmail, onSuccess }) => {
+  const [formData, setFormData] = useState({
+    email: prefilledEmail || '',
+    password: '',
+    confirmPassword: ''
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const validate = (): Record<string, string> => {
+    const newErrors: Record<string, string> = {};
+    if (!formData.email.trim()) newErrors.email = 'Email is required';
+    else if (!formData.email.trim().endsWith('@students.edu.sg')) newErrors.email = 'Email must end with @students.edu.sg';
+    if (type !== 'confirm' && !formData.password) newErrors.password = 'Password is required';
+    if ((type === 'create' || type === 'change') && formData.password.length < 8) newErrors.password = 'Password must be at least 8 characters';
+    if (type === 'create' && (!formData.confirmPassword || formData.password !== formData.confirmPassword)) newErrors.confirmPassword = 'Passwords do not match';
+    if (type === 'change' && !formData.password) newErrors.password = 'New password is required';
+    return newErrors;
+  };
+
+  const isFormValid = (): boolean => {
+    const validationErrors = validate();
+    return Object.keys(validationErrors).length === 0;
+  };
+
+  const handleSubmit = async (): Promise<void> => {
+    const newErrors = validate();
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    setLoading(true);
+    setErrors({});
+    try {
+      let result;
+      if (type === 'create') {
+        // Save current anonymous data to localStorage for migration
+        const { data: { session } } = await supabase.auth.getSession();
+        const oldId = session?.user?.id;
+        let migrationData = null;
+        if (oldId) {
+          const { data: dbUser } = await supabase.from('users').select('*').eq('id', oldId).maybeSingle();
+          const { data: grades } = await supabase.from('grades').select('*').eq('user_id', oldId);
+          migrationData = {
+            oldId,
+            dbUser: dbUser,
+            grades: grades || []
+          };
+          localStorage.setItem('pendingMigration', JSON.stringify(migrationData));
+        }
+
+        // Sign out anonymous
+        await supabase.auth.signOut();
+
+        // Sign up new user
+        const { data: { user }, error: signUpError } = await supabase.auth.signUp({
+          email: formData.email.trim(),
+          password: formData.password,
+          options: {
+            emailRedirectTo: window.location.origin
+          }
+        });
+
+        if (signUpError) {
+          setErrors({ general: signUpError.message });
+          // Restore localStorage if failed
+          if (migrationData) {
+            localStorage.setItem('pendingMigration', JSON.stringify(migrationData));
+          }
+          return;
+        }
+
+        if (!user || !user.id) {
+          setErrors({ general: 'Signup failed. Please try again.' });
+          return;
+        }
+
+        // Add newId to migrationData
+        migrationData.newId = user.id;
+        localStorage.setItem('pendingMigration', JSON.stringify(migrationData));
+
+        setSent(true);
+        localStorage.setItem('verificationSent', 'true');
+      } else {
+        switch (type) {
+          case 'confirm':
+            result = await supabase.auth.resend({
+              type: 'signup',
+              email: formData.email.trim()
+            });
+            break;
+          case 'change':
+            result = await supabase.auth.updateUser({
+              password: formData.password
+            });
+            break;
+          case 'signin':
+            // No signOut needed for pure signin; only if switching from anon
+            const { data: { session: currentSession } } = await supabase.auth.getSession();
+            if (currentSession?.user?.is_anonymous) {
+              await supabase.auth.signOut();
+            }
+            result = await supabase.auth.signInWithPassword({
+              email: formData.email.trim(),
+              password: formData.password
+            });
+            if (result.data.session) {
+              // Clear pending migration for regular signin
+              localStorage.removeItem('pendingMigration');
+              window.location.reload();
+            }
+            break;
+        }
+
+        if (result?.error) {
+          setErrors({ general: result.error.message });
+          return;
+        }
+
+        if (type === 'confirm') {
+          setSent(true);
+          localStorage.setItem('verificationSent', 'true');
+        } else {
+          onSuccess();
+          onClose();
+        }
+      }
+    } catch (err) {
+      setErrors({ general: 'An error occurred. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleContinue = async (): Promise<void> => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: formData.email.trim(),
+        password: formData.password
+      });
+
+      if (error) {
+        if (error.message.includes('Email not confirmed') || error.message.includes('must be confirmed')) {
+          setErrors({ general: 'Please check your email and click the verification link first.' });
+        } else {
+          setErrors({ general: error.message });
+        }
+        return;
+      }
+
+      // Success: verified and signed in
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      setErrors({ general: 'An error occurred. Please try again.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const title = {
+    create: 'Create Verified Account',
+    confirm: 'Confirm Email',
+    change: 'Change Password',
+    signin: 'Sign In'
+  }[type];
+
+  const description = {
+    create: 'Enter your school email and a strong password. We\'ll send a verification email immediately after creation. You must verify before using the account.',
+    confirm: 'Resend the verification email to activate your account. Check your spam folder if not received.',
+    change: 'Enter your new password. It must be at least 8 characters long.',
+    signin: 'Sign in with your verified credentials.'
+  }[type];
+
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div 
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end justify-center z-50"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <motion.div 
+          className="bg-slate-900 rounded-t-3xl w-full max-w-md p-6 pb-8 shadow-2xl border-t border-slate-700 relative max-h-[90vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        >
+          <div className="mb-6">
+            <div className="flex justify-center mb-3">
+              <div className="w-12 h-1 bg-slate-700 rounded-full"></div>
+            </div>
+            <h2 className="text-2xl font-bold text-white text-center mb-2">{title}</h2>
+            <p className="text-gray-400 text-sm text-center">{description}</p>
+            <button 
+              type="button"
+              onClick={onClose} 
+              className="absolute top-6 right-4 text-gray-400 hover:text-white transition-colors"
+            >
+              <X size={24} />
+            </button>
+          </div>
+          
+          <div className="space-y-4">
+            {sent ? (
+              <div className="text-center space-y-3">
+                <p className="text-lime-400 text-lg">✅ {type === 'create' ? 'Account Created! Verification Email Sent' : 'Verification Email Resent!'}</p>
+                <p className="text-gray-400 text-sm">Check your inbox (and spam) at:</p>
+                <p className="text-white font-mono text-sm break-all">{formData.email}</p>
+                <p className="text-gray-400 text-xs">Click the verification link and refresh this page. Your account is not active until verified.</p>
+                <motion.button
+                  onClick={handleContinue}
+                  disabled={loading}
+                  className={`w-full ${loading ? 'bg-slate-700 text-gray-400 cursor-not-allowed' : 'bg-lime-400 text-black hover:bg-lime-300'} rounded-xl py-3 font-semibold`}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {loading ? 'Checking...' : 'Continue'}
+                </motion.button>
+                <motion.button
+                  onClick={onClose}
+                  className="w-full bg-slate-700 text-white rounded-xl py-3"
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Close
+                </motion.button>
+              </div>
+            ) : (
+              <>
+                {type !== 'change' && (
+                  <div>
+                    <label className="block text-gray-400 text-sm mb-2 font-medium flex items-center gap-1">
+                      <Mail size={16} />
+                      School Email
+                    </label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      disabled={type === 'confirm'}
+                      placeholder="yourname@students.edu.sg"
+                      className={`w-full bg-slate-800 text-white border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 pr-10 ${
+                        errors.email ? 'border-red-500' : 'border-slate-700'
+                      } ${type === 'confirm' ? 'bg-slate-800/50 cursor-not-allowed' : ''}`}
+                    />
+                    {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
+                  </div>
+                )}
+                {(type === 'create' || type === 'change' || type === 'signin') && (
+                  <>
+                    <div>
+                      <label className="block text-gray-400 text-sm mb-2 font-medium flex items-center gap-1">
+                        <Lock size={16} />
+                        {type === 'change' ? 'New Password' : 'Password'}
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={formData.password}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          placeholder="Enter a strong password (min 8 chars)"
+                          className={`w-full bg-slate-800 text-white border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 pr-10 ${
+                            errors.password ? 'border-red-500' : 'border-slate-700'
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-3 text-gray-400 hover:text-white"
+                        >
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                      {errors.password && <p className="text-red-400 text-xs mt-1">{errors.password}</p>}
+                    </div>
+                    {type === 'create' && (
+                      <div>
+                        <label className="block text-gray-400 text-sm mb-2 font-medium flex items-center gap-1">
+                          <Lock size={16} />
+                          Confirm Password
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            value={formData.confirmPassword}
+                            onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                            placeholder="Confirm your password"
+                            className={`w-full bg-slate-800 text-white border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 pr-10 ${
+                              errors.confirmPassword ? 'border-red-500' : 'border-slate-700'
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute right-3 top-3 text-gray-400 hover:text-white"
+                          >
+                            {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        </div>
+                        {errors.confirmPassword && <p className="text-red-400 text-xs mt-1">{errors.confirmPassword}</p>}
+                      </div>
+                    )}
+                  </>
+                )}
+                {errors.general && <p className="text-red-400 text-sm text-center py-2 bg-red-500/10 rounded-lg border border-red-500/30">{errors.general}</p>}
+                <motion.button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={loading || !isFormValid()}
+                  className={`w-full rounded-xl py-4 text-base font-bold shadow-xl transition-all ${
+                    isFormValid() && !loading
+                      ? 'bg-lime-400 text-black hover:bg-lime-300'
+                      : 'bg-slate-700 text-gray-400 cursor-not-allowed'
+                  }`}
+                  whileTap={{ scale: 0.98 }}
+                  whileHover={isFormValid() && !loading ? { scale: 1.02 } : {}}
+                >
+                  {loading ? 'Processing...' : {
+                    create: 'Create Account & Verify Email',
+                    confirm: 'Resend Verification',
+                    change: 'Update Password',
+                    signin: 'Sign In'
+                  }[type]}
+                </motion.button>
+              </>
+            )}
           </div>
         </motion.div>
       </motion.div>
@@ -648,6 +1005,11 @@ const Profile: React.FC = () => {
   const [saving, setSaving] = useState<boolean>(false);
   const [isScrolled, setIsScrolled] = useState<boolean>(false);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('anonymous');
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authType, setAuthType] = useState<'create' | 'confirm' | 'change' | 'signin'>('create');
+  const [showVerificationAnimation, setShowVerificationAnimation] = useState(false);
 
   const levels: LevelOption[] = [
     { value: 'sec_1', label: 'Secondary 1' },
@@ -658,9 +1020,119 @@ const Profile: React.FC = () => {
     { value: 'jc_2', label: 'JC 2' }
   ];
 
+  // Helper to generate unique nickname
+  const generateUniqueNickname = async (baseNickname: string, userId: string): Promise<string> => {
+    let nickname = baseNickname;
+    const shortId = userId.slice(-4);
+    let attempt = 0;
+    while (attempt < 100) {
+      const { count } = await supabase
+        .from('users')
+        .select('id', { count: 'exact', head: true })
+        .eq('nickname', nickname);
+      if ((count ?? 0) === 0) {
+        return nickname;
+      }
+      attempt++;
+      nickname = `${baseNickname.slice(0, 10)}${shortId}${attempt}`;
+    }
+    // Fallback
+    return `User${Date.now().toString().slice(-6)}`;
+  };
+
+  // Helper to ensure user exists and return it
+  const ensureUserExists = async (sessionUserId: string, localUser: Partial<User>): Promise<User> => {
+    // Use maybeSingle to avoid 406/PGRST116 on empty
+    let { data: existingUser, error: fetchError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', sessionUserId)
+      .maybeSingle();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.error('Unexpected fetch error:', fetchError);
+      // Fallback to local
+      return {
+        id: sessionUserId,
+        nickname: localUser.nickname || 'Student',
+        school_code: localUser.school_code || 'RI',
+        school_name: localUser.school_name || 'Raffles Institution',
+        level: localUser.level || 'sec_4',
+        opted_in_cohort: localUser.opted_in_cohort ?? true,
+        avatar_seed: localUser.avatar_seed || generateAvatarSeed(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_active_at: new Date().toISOString()
+      } as User;
+    }
+
+    if (existingUser) {
+      // Update with local if needed
+      const updates: Partial<User> = {};
+      if (localUser.nickname && localUser.nickname !== existingUser.nickname) {
+        updates.nickname = await generateUniqueNickname(localUser.nickname, sessionUserId);
+      }
+      if (localUser.school_code && localUser.school_code !== existingUser.school_code) {
+        updates.school_code = localUser.school_code;
+        updates.school_name = localUser.school_name || '';
+      }
+      if (localUser.level && localUser.level !== existingUser.level) {
+        updates.level = localUser.level;
+      }
+      if (!existingUser.avatar_seed) {
+        updates.avatar_seed = generateAvatarSeed();
+      }
+      if (Object.keys(updates).length > 0) {
+        updates.updated_at = new Date().toISOString();
+        updates.last_active_at = new Date().toISOString();
+        const { error: updateError } = await supabase
+          .from('users')
+          .update(updates)
+          .eq('id', sessionUserId);
+        if (updateError) {
+          console.error('Update error (non-fatal):', updateError);
+        } else {
+          // Refetch after update
+          ({ data: existingUser } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', sessionUserId)
+            .single());
+        }
+      }
+      return existingUser as User;
+      } else {
+      // Create new user
+      const uniqueNickname = await generateUniqueNickname(localUser.nickname || 'Student', sessionUserId);
+      const avatarSeed = localUser.avatar_seed || generateAvatarSeed();
+      const newUser: User = {
+        id: sessionUserId,
+        nickname: uniqueNickname,
+        school_code: localUser.school_code || 'RI',
+        school_name: localUser.school_name || 'Raffles Institution',
+        level: localUser.level || 'sec_4',
+        avatar_seed: avatarSeed,
+        opted_in_cohort: localUser.opted_in_cohort ?? true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_active_at: new Date().toISOString()
+      };
+      const { data: confirmedUser, error: insertError } = await supabase
+        .from('users')
+        .upsert([newUser], { onConflict: 'id' })
+        .select('*')
+        .single();
+      if (insertError) {
+        console.error('Insert error:', insertError);
+        // Fallback to local-like
+        return newUser;
+      }
+      return confirmedUser as User;
+    }
+  };
+
   const loadData = useCallback(async (): Promise<void> => {
     try {
-      // getSession may return data?.session === null, so guard explicitly
       const sessionResp = await supabase.auth.getSession();
       let session = sessionResp.data?.session ?? null;
 
@@ -674,6 +1146,19 @@ const Profile: React.FC = () => {
         throw new Error('No active session available');
       }
 
+      const hasEmail = !!session.user.email;
+      const isConfirmed = !!session.user.email_confirmed_at;
+      const newAuthStatus = hasEmail && !isConfirmed ? 'pending' : isConfirmed ? 'verified' : 'anonymous';
+      setAuthStatus(newAuthStatus);
+      setUserEmail(session.user.email || '');
+
+      // Check for verification animation
+      if (newAuthStatus === 'verified' && localStorage.getItem('verificationSent')) {
+        setShowVerificationAnimation(true);
+        localStorage.removeItem('verificationSent');
+      }
+
+      // Load local user data
       const localUserStr = localStorage.getItem('outrankUser');
       const localUser: Partial<User> = localUserStr ? JSON.parse(localUserStr) : {
         nickname: 'Student',
@@ -682,74 +1167,71 @@ const Profile: React.FC = () => {
         level: 'sec_4'
       };
 
-      // Fetch or upsert user
-      const { data: existingUser, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
+      // MIGRATION: Handle pending if verified
+// MIGRATION: Handle pending if verified
+      const pendingStr = localStorage.getItem('pendingMigration');
+      if (pendingStr && newAuthStatus === 'verified' && session.user.id) {
+        try {
+          const pending = JSON.parse(pendingStr);
+          if (pending.oldId && pending.newId && pending.oldId !== session.user.id && pending.newId === session.user.id) {
+            // Merge pending data into localUser
+            if (pending.dbUser) {
+              localUser.nickname = pending.dbUser.nickname || localUser.nickname;
+              localUser.school_code = pending.dbUser.school_code || localUser.school_code;
+              localUser.school_name = pending.dbUser.school_name || localUser.school_name;
+              localUser.level = pending.dbUser.level || localUser.level;
+              localUser.avatar_seed = pending.dbUser.avatar_seed || localUser.avatar_seed;
+              localUser.opted_in_cohort = pending.dbUser.opted_in_cohort ?? localUser.opted_in_cohort;
+            }
 
-      let dbUser: User;
-      if (fetchError && (fetchError as PostgrestError).code === 'PGRST116') {
-        // Generate avatar seed if needed
-        const avatarSeed = (localUser as Partial<User>).avatar_seed || generateAvatarSeed();
-        dbUser = {
-          id: session.user.id,
-          ...(localUser as Partial<User>),
-          nickname: (localUser as Partial<User>).nickname || 'Student',
-          school_code: (localUser as Partial<User>).school_code || 'RI',
-          school_name: (localUser as Partial<User>).school_name || 'Raffles Institution',
-          level: (localUser as Partial<User>).level || 'sec_4',
-          avatar_seed: avatarSeed,
-          opted_in_cohort: (localUser as Partial<User>).opted_in_cohort ?? true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          last_active_at: new Date().toISOString()
-        };
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert([dbUser]);
-        if (insertError) throw insertError;
-      } else if (existingUser) {
-        dbUser = existingUser as User;
-        // Sync local changes
-        const updates: Partial<User> = {};
-        if ((localUser as Partial<User>).nickname && (localUser as Partial<User>).nickname !== dbUser.nickname) updates.nickname = (localUser as Partial<User>).nickname;
-        if ((localUser as Partial<User>).school_code && (localUser as Partial<User>).school_code !== dbUser.school_code) {
-          updates.school_code = (localUser as Partial<User>).school_code;
-          updates.school_name = (localUser as Partial<User>).school_name;
+            // Ensure/create user with merged data
+            const mergedUser = await ensureUserExists(session.user.id, localUser);
+
+            // Insert grades if any
+            if (pending.grades && pending.grades.length > 0) {
+              const newGrades = pending.grades.map((g: Grade) => ({
+                ...g,
+                user_id: session.user.id,
+                id: undefined  // New UUID
+              }));
+              const { error: insertError } = await supabase.from('grades').insert(newGrades);
+              if (insertError) {
+                console.error('Grade insert error (non-fatal):', insertError);
+              }
+            }
+
+            // Cleanup old data
+            const { error: cleanupError } = await supabase.rpc('delete_user_and_data', { 
+              p_user_id: pending.oldId 
+            });
+            if (cleanupError) {
+              console.error('Cleanup error (non-fatal):', cleanupError);
+            }
+
+            localStorage.removeItem('pendingMigration');
+            // Set user from merged
+            setUser(mergedUser);
+          } else {
+            // Not a matching migration, clear pending
+            localStorage.removeItem('pendingMigration');
+          }
+        } catch (err) {
+          console.error('Migration error (retry next load):', err);
+          // Keep pending for retry
         }
-        if ((localUser as Partial<User>).level && (localUser as Partial<User>).level !== dbUser.level) updates.level = (localUser as Partial<User>).level;
-        if (!dbUser.avatar_seed) {
-          const newSeed = generateAvatarSeed();
-          updates.avatar_seed = newSeed;
-        }
-        if (Object.keys(updates).length > 0) {
-          updates.updated_at = new Date().toISOString();
-          updates.last_active_at = new Date().toISOString();
-          const { error: updateError } = await supabase
-            .from('users')
-            .update(updates)
-            .eq('id', session.user.id);
-          if (updateError) console.error('Update error:', updateError);
-          // Refetch after update and ensure non-null
-          const { data: fetchedDbUser } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          if (!fetchedDbUser) throw new Error('Failed to refetch user after update');
-          dbUser = fetchedDbUser as User;
-        }
-      } else {
-        throw new Error('User fetch failed');
       }
 
-      // Update localStorage
-      const updatedLocalUser = { ...localUser, id: session.user.id };
-      localStorage.setItem('outrankUser', JSON.stringify(updatedLocalUser));
+      // Ensure user exists (handles creation or fetch)
+      if (!user) {
+        const dbUser = await ensureUserExists(session.user.id, localUser);
+        setUser(dbUser);
 
-      // Load local settings
+        // Update localStorage
+        const { data_retention: _, ...filteredLocalUser } = localUser;
+        const updatedLocalUser = { ...filteredLocalUser, id: session.user.id };
+        localStorage.setItem('outrankUser', JSON.stringify(updatedLocalUser));
+      }
+
       const localSettingsStr = localStorage.getItem('outrankLocalSettings');
       const localSettings = localSettingsStr ? JSON.parse(localSettingsStr) : {
         twoFA: false,
@@ -759,30 +1241,54 @@ const Profile: React.FC = () => {
         data_retention: '1year'
       };
 
-      setUser(dbUser);
       setFormData({
-        nickname: dbUser.nickname,
-        school_code: dbUser.school_code,
-        school_name: dbUser.school_name,
-        level: dbUser.level,
-        opted_in_cohort: dbUser.opted_in_cohort,
+        nickname: user?.nickname || '',
+        school_code: user?.school_code || '',
+        school_name: user?.school_name || '',
+        level: user?.level || '',
+        opted_in_cohort: user?.opted_in_cohort ?? true,
         twoFA: (localSettings as Partial<ProfileFormData>).twoFA as boolean || false,
         notifications: (localSettings as Partial<ProfileFormData>).notifications as ProfileFormData['notifications'] || { email: true, push: true, inapp: true },
         share_school: (localSettings as Partial<ProfileFormData>).share_school as boolean || true,
         share_national: (localSettings as Partial<ProfileFormData>).share_national as boolean || true,
         data_retention: (localSettings as Partial<ProfileFormData>).data_retention as string || '1year',
-        sessions: formData.sessions // Keep existing
+        sessions: formData.sessions
       });
 
     } catch (err) {
       console.error('Error loading profile data:', err);
+      // Fallback: Use local data only
+      const localUserStr = localStorage.getItem('outrankUser');
+      if (localUserStr) {
+        const fallbackUser: User = {
+          id: 'fallback',
+          nickname: JSON.parse(localUserStr).nickname || 'Student',
+          school_code: JSON.parse(localUserStr).school_code || 'RI',
+          school_name: JSON.parse(localUserStr).school_name || 'Raffles Institution',
+          level: JSON.parse(localUserStr).level || 'sec_4',
+          opted_in_cohort: true,
+          avatar_seed: generateAvatarSeed(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          last_active_at: new Date().toISOString()
+        };
+        setUser(fallbackUser);
+        setFormData({
+          ...formData,
+          nickname: fallbackUser.nickname,
+          school_code: fallbackUser.school_code,
+          school_name: fallbackUser.school_name,
+          level: fallbackUser.level,
+          opted_in_cohort: fallbackUser.opted_in_cohort
+        });
+      }
     } finally {
       setLoading(false);
     }
-  }, [formData.sessions]);
+  }, [formData.sessions, user]);  // Note: user in deps to refetch if needed, but careful with loops
 
   const loadStats = useCallback(async (): Promise<void> => {
-    if (!user) return;
+    if (!user || !user.id || user.id === 'fallback') return;
     try {
       const { data: fetchedGrades } = await supabase
         .from('grades')
@@ -876,12 +1382,26 @@ const Profile: React.FC = () => {
   }, [loadData]);
 
   useEffect(() => {
-    if (user && loading === false) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const hasEmail = !!session?.user?.email;
+      const isConfirmed = !!session?.user?.email_confirmed_at;
+      const newAuthStatus = hasEmail && !isConfirmed ? 'pending' : isConfirmed ? 'verified' : 'anonymous';
+      setAuthStatus(newAuthStatus);
+      setUserEmail(session?.user?.email || '');
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        loadData();
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (user && !loading) {
       loadStats();
     }
   }, [user, loading, loadStats]);
 
-  // Handle level change for schools
   useEffect(() => {
     if (isEditing && formData.level) {
       const availableSchools = getAvailableSchools(formData.level);
@@ -897,7 +1417,6 @@ const Profile: React.FC = () => {
     }
   }, [formData.level, isEditing, formData.school_code]);
 
-  // Scroll listener
   useEffect(() => {
     const handleScroll = (): void => {
       setIsScrolled(window.scrollY > 50);
@@ -937,12 +1456,19 @@ const Profile: React.FC = () => {
   }, [formData]);
 
   const handleSave = async (): Promise<void> => {
-    if (!validateForm()) return;
+    if (!validateForm() || !user) return;
 
     setSaving(true);
     try {
-      const updates: Partial<User> = {
-        nickname: formData.nickname,
+      // Resolve unique nickname if changed
+      let uniqueNickname = formData.nickname;
+      if (formData.nickname !== user.nickname) {
+        uniqueNickname = await generateUniqueNickname(formData.nickname, user.id);
+      }
+
+      // Only include User fields in updates
+      const userUpdates: Partial<User> = {
+        nickname: uniqueNickname,
         school_code: formData.school_code,
         school_name: formData.school_name,
         level: formData.level,
@@ -951,36 +1477,33 @@ const Profile: React.FC = () => {
         last_active_at: new Date().toISOString()
       };
 
-      // Check nickname uniqueness (excluding self)
-      const { count: nickCount } = await supabase
-        .from('users')
-        .select('id', { count: 'exact', head: true })
-        .eq('nickname', formData.nickname)
-        .neq('id', user!.id);
-
-      if ((nickCount ?? 0) > 0) {
-        setErrors({ nickname: 'Nickname already taken' });
-        setSaving(false);
-        return;
-      }
-
       const { error } = await supabase
         .from('users')
-        .update(updates)
-        .eq('id', user!.id);
+        .update(userUpdates)
+        .eq('id', user.id);
 
       if (error) throw error;
 
-      // Update localStorage
-      const updatedLocal = { ...(JSON.parse(localStorage.getItem('outrankUser') || '{}')), ...formData };
-      localStorage.setItem('outrankUser', JSON.stringify(updatedLocal));
+      // Update local outrankUser
+      const currentLocalStr = localStorage.getItem('outrankUser') || '{}';
+      const currentLocal = JSON.parse(currentLocalStr);
+      const updatedLocalUser = {
+        ...currentLocal,
+        id: user.id,
+        nickname: uniqueNickname,
+        school_code: formData.school_code,
+        school_name: formData.school_name,
+        level: formData.level,
+        opted_in_cohort: formData.opted_in_cohort,
+        avatar_seed: user.avatar_seed // Preserve
+      };
+      localStorage.setItem('outrankUser', JSON.stringify(updatedLocalUser));
 
-      setUser({ ...user!, ...formData });
+      setUser({ ...user, ...userUpdates });
       setIsEditing(false);
       setErrors({});
       saveLocalSettings();
 
-      // Refetch stats in case level changed
       await loadStats();
 
     } catch (err) {
@@ -992,13 +1515,14 @@ const Profile: React.FC = () => {
   };
 
   const handleCancel = (): void => {
+    if (!user) return;
     setFormData({
-      nickname: user!.nickname,
-      school_code: user!.school_code,
-      school_name: user!.school_name,
-      level: user!.level,
-      opted_in_cohort: user!.opted_in_cohort,
-      twoFA: formData.twoFA, // Keep local
+      nickname: user.nickname,
+      school_code: user.school_code,
+      school_name: user.school_name,
+      level: user.level,
+      opted_in_cohort: user.opted_in_cohort,
+      twoFA: formData.twoFA,
       notifications: formData.notifications,
       share_school: formData.share_school,
       share_national: formData.share_national,
@@ -1011,7 +1535,7 @@ const Profile: React.FC = () => {
   };
 
   const handleAddGrade = async (submitFormData: AddGradeForm): Promise<void> => {
-    if (!user) return;
+    if (!user || user.id === 'fallback') return;
 
     const scoreNum = parseFloat(submitFormData.score);
     const maxScoreNum = parseFloat(submitFormData.max_score);
@@ -1049,34 +1573,30 @@ const Profile: React.FC = () => {
     await loadStats();
   };
 
-  const handleChangePassword = (): void => {
-    // Mock
-    alert('Password updated successfully! (Demo mode)');
-  };
-
-  const handleLogoutAll = (): void => {
-    // Mock
-    setFormData(prev => ({ ...prev, sessions: [] }));
-    alert('All other sessions logged out! (Demo mode)');
-  };
-
-  const handleExportData = (): void => {
-    // Mock export
-    const dataStr = JSON.stringify({ user: formData, stats: userStats }, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'outrank-data.json';
-    link.click();
-  };
-
-  const handleDeleteAccount = (): void => {
-    // Mock
-    if (confirm('Delete account? (Demo mode - no real deletion)')) {
-      alert('Account deleted! (Demo mode)');
+  const handleDeleteAccount = async (): Promise<void> => {
+    if (!confirm('Are you sure you want to delete your account? This cannot be undone. All data will be permanently lost.')) return;
+    try {
+      if (user && user.id !== 'fallback') {
+        await supabase.from('grades').delete().eq('user_id', user.id);
+        await supabase.from('users').delete().eq('id', user.id);
+      }
+      await supabase.auth.signOut();
+      localStorage.removeItem('outrankUser');
+      localStorage.removeItem('outrankLocalSettings');
       router.push('/');
+    } catch (err) {
+      console.error('Error deleting account:', err);
+      alert('Error deleting account. Please try again.');
     }
+  };
+
+  const handleAuthOpen = (typ: typeof authType) => {
+    setAuthType(typ);
+    setShowAuthModal(true);
+  };
+
+  const handleAuthSuccess = () => {
+    loadData();
   };
 
   const availableSchools = getAvailableSchools(formData.level || user?.level || 'sec_4');
@@ -1132,7 +1652,7 @@ const Profile: React.FC = () => {
       <Header user={user} isScrolled={isScrolled} />
 
       <div className="px-5 py-6 space-y-6 relative">
-        {/* Avatar and Quick Stats */}
+        {/* Avatar and Profile Display */}
         <motion.div 
           className="flex flex-col items-center space-y-4"
           initial={{ opacity: 0, y: 20 }}
@@ -1151,247 +1671,288 @@ const Profile: React.FC = () => {
                 {user?.nickname?.[0]?.toUpperCase() || 'U'}
               </div>
             )}
-            {isEditing && (
-              <motion.button
-                type="button"
-                className="absolute -top-2 -right-2 bg-lime-600 rounded-full p-1 shadow-lg"
-                whileTap={{ scale: 0.9 }}
-                onClick={() => {
-                  const newSeed = generateAvatarSeed();
-                  setUser({ ...user!, avatar_seed: newSeed });
-                  // Update DB
-                  supabase.from('users').update({ avatar_seed: newSeed }).eq('id', user!.id);
-                }}
-              >
-                <Edit3 size={14} className="text-white" />
-              </motion.button>
+          </div>
+          <div className="text-center space-y-1">
+            <h2 className={`font-bold ${isEditing ? '' : 'text-white text-2xl'}`}>
+              {isEditing ? (
+                <EditableInput
+                  value={formData.nickname}
+                  onChange={(val) => setFormData({ ...formData, nickname: val })}
+                  placeholder="Enter nickname"
+                  error={errors.nickname}
+                  className="text-center text-2xl py-2 px-0 border-0 bg-transparent rounded-none focus:ring-0 focus:border-transparent text-white font-bold"
+                />
+              ) : (
+                user?.nickname || 'Student'
+              )}
+              {authStatus === 'verified' ? (
+                <ShieldCheck size={18} className="text-emerald-400 inline ml-2" />
+              ) : authStatus === 'pending' ? (
+                <ShieldOff size={18} className="text-amber-400 inline ml-2" />
+              ) : (
+                <ShieldOff size={18} className="text-gray-500 inline ml-2" />
+              )}
+            </h2>
+            {user && (
+              <div className="space-y-1">
+                <p className="text-sm text-gray-300">
+                  {isEditing ? (
+                    <select
+                      value={formData.school_code}
+                      onChange={(e) => {
+                        const selectedSchool = availableSchools.find(s => s.code === e.target.value);
+                        if (selectedSchool) {
+                          setFormData({
+                            ...formData,
+                            school_code: e.target.value,
+                            school_name: selectedSchool.name
+                          });
+                        }
+                      }}
+                      className="w-full bg-slate-800 text-white border border-slate-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-lime-400/50 text-sm"
+                    >
+                      {availableSchools.map(s => (
+                        <option key={s.code} value={s.code}>
+                          {s.name} ({s.code})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    `${user.school_name} (${user.school_code})`
+                  )}
+                  {errors.school_code && <p className="text-red-400 text-xs mt-1">{errors.school_code}</p>}
+                </p>
+                <p className="text-sm text-gray-400">
+                  {isEditing ? (
+                    <select
+                      value={formData.level}
+                      onChange={(e) => setFormData({ ...formData, level: e.target.value })}
+                      className="w-full bg-slate-800 text-white border border-slate-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-lime-400/50 text-sm"
+                    >
+                      {levels.map(l => (
+                        <option key={l.value} value={l.value}>
+                          {l.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    levels.find(l => l.value === user.level)?.label || 'N/A'
+                  )}
+                  {errors.level && <p className="text-red-400 text-xs mt-1">{errors.level}</p>}
+                </p>
+              </div>
             )}
           </div>
-          <h2 className="text-2xl font-bold text-white">{user?.nickname || 'Student'}</h2>
         </motion.div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-4">
-          <StatCard
-            title="Overall Average"
-            value={`${(userStats?.overall_average || 0)?.toFixed(1)}%`}
-            subtitle="Lifetime performance"
-            icon={BarChart3}
-            color="#10B981"
-          />
-          <StatCard
-            title="Total Grades"
-            value={userStats?.total_grades || 0}
-            subtitle="Assessments logged"
-            icon={GraduationCap}
-            color="#10B981"
-          />
-          <StatCard
-            title="Subjects Covered"
-            value={userStats?.subjects_count || 0}
-            subtitle="Unique subjects"
-            icon={School}
-            color="#10B981"
-          />
-          <StatCard
-            title="Consistency"
-            value={(userStats?.consistency_score || 0)?.toFixed(1)}
-            subtitle="Score /10"
-            icon={ShieldCheck}
-            color="#10B981"
-          />
-        </div>
+        {userStats && (
+          <div className="grid grid-cols-2 gap-4">
+            <StatCard
+              title="Overall Average"
+              value={`${(userStats.overall_average || 0).toFixed(1)}%`}
+              subtitle="Lifetime performance"
+              icon={BarChart3}
+              color="#10B981"
+            />
+            <StatCard
+              title="Total Grades"
+              value={userStats.total_grades || 0}
+              subtitle="Assessments logged"
+              icon={GraduationCap}
+              color="#10B981"
+            />
+            <StatCard
+              title="Subjects Covered"
+              value={userStats.subjects_count || 0}
+              subtitle="Unique subjects"
+              icon={School}
+              color="#10B981"
+            />
+            <StatCard
+              title="Consistency"
+              value={(userStats.consistency_score || 0).toFixed(1)}
+              subtitle="Score /10"
+              icon={ShieldCheck}
+              color="#10B981"
+            />
+          </div>
+        )}
 
-        {/* Profile Form */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={isEditing ? 'edit' : 'view'}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.3 }}
-            className="bg-slate-800 rounded-2xl p-6 border border-slate-700 space-y-6 max-h-[80vh] overflow-y-auto"
-          >
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-white flex items-center">
-                <User size={20} className="mr-2 text-lime-400" />
-                Personal Info
-              </h3>
-              {!isEditing ? (
-                <motion.button
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="flex items-center text-lime-400 hover:text-lime-300 text-sm font-medium"
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Edit3 size={16} className="mr-1" />
-                  Edit
-                </motion.button>
-              ) : (
-                <div className="flex space-x-2">
+        {/* Account Status Section */}
+        <motion.div
+          className="bg-slate-800 rounded-2xl p-6 border border-slate-700"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+            <User size={20} className="mr-2 text-lime-400" />
+            Account
+          </h3>
+          <div className="space-y-3">
+            {authStatus === 'anonymous' && (
+              <>
+                <p className="text-gray-400 text-sm">Your data is stored locally. Create a verified account to sync across devices and contribute to rankings.</p>
+                <div className="flex gap-2">
                   <motion.button
                     type="button"
-                    onClick={handleCancel}
-                    className="text-gray-400 hover:text-gray-300 p-1"
+                    onClick={() => handleAuthOpen('create')}
+                    className="flex-1 bg-lime-500/10 border border-lime-500/30 text-lime-400 hover:bg-lime-500/20 rounded-xl py-3 flex items-center justify-center gap-2 transition-all min-w-0"
                     whileTap={{ scale: 0.98 }}
                   >
-                    <X size={20} />
+                    <Key size={16} />
+                    Create
                   </motion.button>
                   <motion.button
                     type="button"
-                    onClick={handleSave}
-                    disabled={!hasChanges || saving}
-                    className={`flex items-center px-3 py-1 rounded-lg text-sm font-medium transition-all ${
-                      !hasChanges || saving
-                        ? 'text-gray-500 cursor-not-allowed'
-                        : 'text-lime-400 hover:text-lime-300 bg-lime-500/10'
-                    }`}
+                    onClick={() => handleAuthOpen('signin')}
+                    className="flex-1 bg-slate-700/50 border border-slate-700 text-gray-300 hover:bg-slate-700 rounded-xl py-3 flex items-center justify-center gap-2 transition-all min-w-0"
                     whileTap={{ scale: 0.98 }}
                   >
-                    <Save size={16} className="mr-1" />
-                    {saving ? 'Saving...' : 'Save'}
+                    <Mail size={16} />
+                    Sign In
                   </motion.button>
                 </div>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-gray-400 text-sm mb-2 font-medium">Nickname</label>
-                {isEditing ? (
-                  <EditableInput
-                    value={formData.nickname}
-                    onChange={(val) => setFormData({ ...formData, nickname: val })}
-                    placeholder="Enter your nickname"
-                    error={errors.nickname}
-                  />
-                ) : (
-                  <p className="text-white font-semibold">{formData.nickname}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-gray-400 text-sm mb-2 font-medium">School</label>
-                {isEditing ? (
-                  <select
-                    value={formData.school_code}
-                    onChange={(e) => {
-                      const code = e.target.value;
-                      const school = availableSchools.find(s => s.code === code);
-                      setFormData(prev => ({
-                        ...prev,
-                        school_code: code,
-                        school_name: school ? school.name : ''
-                      }));
-                    }}
-                    className={`w-full bg-slate-700 text-white border border-slate-600 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all ${
-                      errors.school_code || errors.school_name ? 'border-red-500' : ''
-                    }`}
-                  >
-                    <option value="">Select a school</option>
-                    {availableSchools.map((school) => (
-                      <option key={school.code} value={school.code}>
-                        {school.name} ({school.code})
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <p className="text-white font-semibold">{formData.school_name} ({formData.school_code})</p>
-                )}
-                {(errors.school_code || errors.school_name) && (
-                  <p className="text-red-400 text-xs mt-1">{errors.school_code || errors.school_name}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-gray-400 text-sm mb-2 font-medium">Level</label>
-                {isEditing ? (
-                  <select
-                    value={formData.level}
-                    onChange={(e) => setFormData({ ...formData, level: e.target.value })}
-                    className={`w-full bg-slate-700 text-white border border-slate-600 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all ${
-                      errors.level ? 'border-red-500' : ''
-                    }`}
-                  >
-                    <option value="">Select level</option>
-                    {levels.map((lvl) => (
-                      <option key={lvl.value} value={lvl.value}>
-                        {lvl.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <p className="text-white font-semibold">
-                    {levels.find((l) => l.value === formData.level)?.label || 'N/A'}
-                  </p>
-                )}
-                {errors.level && <p className="text-red-400 text-xs mt-1">{errors.level}</p>}
-              </div>
-
-              {errors.general && (
-                <p className="text-red-400 text-sm text-center py-2 bg-red-500/10 rounded-lg border border-red-500/30">
-                  {errors.general}
+              </>
+            )}
+            {authStatus === 'pending' && (
+              <>
+                <p className="text-amber-400 flex items-center gap-1 mb-2">
+                  <ShieldOff size={16} />
+                  Verification Required
                 </p>
-              )}
+                <p className="text-gray-400 text-sm mb-3">Your account is created but not verified. Complete email verification to access full features.</p>
+                <motion.button
+                  type="button"
+                  onClick={() => handleAuthOpen('confirm')}
+                  className="w-full bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 rounded-xl py-3 flex items-center justify-center gap-2 transition-all"
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Mail size={16} />
+                  Resend Verification Email
+                </motion.button>
+              </>
+            )}
+            {authStatus === 'verified' && userEmail && (
+              <div className="space-y-2">
+                <p className="text-white font-mono text-sm break-all">{userEmail}</p>
+                <p className="text-gray-400 text-xs">Account fully verified. Secure and synced.</p>
+                <motion.button
+                  type="button"
+                  onClick={() => handleAuthOpen('change')}
+                  className="w-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 rounded-xl py-3 flex items-center justify-center gap-2 transition-all"
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Lock size={16} />
+                  Change Password
+                </motion.button>
+              </div>
+            )}
+          </div>
+        </motion.div>
 
-              <div className="pt-4 border-t border-slate-700">
-                <h4 className="text-gray-400 text-sm uppercase tracking-wide mb-3 font-medium flex items-center">
-                  <ShieldCheck size={16} className="mr-2 text-lime-400" />
-                  Privacy Settings
-                </h4>
+        {/* Privacy Settings - Always visible, editable only in edit mode */}
+        <motion.div
+          className="bg-slate-800 rounded-2xl p-6 border border-slate-700"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+        >
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+            <ShieldCheck size={20} className="mr-2 text-lime-400" />
+            Privacy Settings
+          </h3>
+          <div className="space-y-4">
+            <ToggleSwitch
+              checked={formData.opted_in_cohort}
+              onChange={(val) => setFormData({ ...formData, opted_in_cohort: val })}
+              label={
+                <span>
+                  Share anonymized data for rankings and insights
+                  <span className="text-xs block text-gray-500 mt-1">
+                    {formData.opted_in_cohort ? 'Your data helps improve cohort comparisons' : 'Opt-in to contribute to national rankings'}
+                  </span>
+                </span>
+              }
+            />
+            {isEditing && (
+              <div className="space-y-4 pt-4 border-t border-slate-700">
                 <ToggleSwitch
-                  checked={formData.opted_in_cohort}
-                  onChange={(val) => setFormData({ ...formData, opted_in_cohort: val })}
+                  checked={formData.share_school}
+                  onChange={(val) => setFormData({ ...formData, share_school: val })}
                   label={
                     <span>
-                      Share anonymized data for rankings and insights
-                      <span className="text-xs block text-gray-500 mt-1">
-                        {formData.opted_in_cohort ? 'Your data helps improve cohort comparisons' : 'Opt-in to contribute to national rankings'}
-                      </span>
+                      Share with School Cohort
+                      <span className="text-xs block text-gray-500 mt-1">Visible only to peers in your school</span>
                     </span>
                   }
                 />
-                {isEditing && (
-                  <div className="space-y-4 mt-4 pt-4 border-t border-slate-700">
-                    <ToggleSwitch
-                      checked={formData.share_school}
-                      onChange={(val) => setFormData({ ...formData, share_school: val })}
-                      label={
-                        <span>
-                          Share with School Cohort
-                          <span className="text-xs block text-gray-500 mt-1">Visible only to peers in your school</span>
-                        </span>
-                      }
-                    />
-                    <ToggleSwitch
-                      checked={formData.share_national}
-                      onChange={(val) => setFormData({ ...formData, share_national: val })}
-                      label={
-                        <span>
-                          Share with National Rankings
-                          <span className="text-xs block text-gray-500 mt-1">Contribute to country-wide benchmarks</span>
-                        </span>
-                      }
-                    />
-                    <div>
-                      <label className="block text-gray-400 text-sm mb-2 font-medium">Data Retention Period</label>
-                      <select
-                        value={formData.data_retention}
-                        onChange={(e) => setFormData({ ...formData, data_retention: e.target.value })}
-                        className="w-full bg-slate-700 text-white border border-slate-600 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50"
-                      >
-                        <option value="3months">3 Months</option>
-                        <option value="1year">1 Year</option>
-                        <option value="permanent">Permanent</option>
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1">How long your anonymized data is kept for analysis</p>
-                    </div>
-                  </div>
-                )}
+                <ToggleSwitch
+                  checked={formData.share_national}
+                  onChange={(val) => setFormData({ ...formData, share_national: val })}
+                  label={
+                    <span>
+                      Share with National Rankings
+                      <span className="text-xs block text-gray-500 mt-1">Contribute to country-wide benchmarks</span>
+                    </span>
+                  }
+                />
+                <div>
+                  <label className="block text-gray-400 text-sm mb-2 font-medium">Data Retention Period</label>
+                  <select
+                    value={formData.data_retention}
+                    onChange={(e) => setFormData({ ...formData, data_retention: e.target.value })}
+                    className="w-full bg-slate-700 text-white border border-slate-600 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50"
+                  >
+                    <option value="3months">3 Months</option>
+                    <option value="1year">1 Year</option>
+                    <option value="permanent">Permanent</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">How long your anonymized data is kept for analysis</p>
+                </div>
               </div>
-            </div>
-          </motion.div>
-        </AnimatePresence>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Edit and Delete Buttons - Moved to bottom of content */}
+        <div className="space-y-4 pt-6 border-t border-slate-700">
+          <motion.button
+            type="button"
+            onClick={() => setIsEditing(!isEditing)}
+            className="w-full bg-lime-500/10 border border-lime-500/30 text-lime-400 hover:bg-lime-500/20 rounded-xl py-4 flex items-center justify-center gap-2 transition-all"
+            whileTap={{ scale: 0.98 }}
+          >
+            <Edit3 size={20} />
+            {isEditing ? 'Cancel Edit' : 'Edit Profile'}
+          </motion.button>
+          {isEditing && (
+            <motion.button
+              type="button"
+              onClick={handleSave}
+              disabled={!hasChanges || saving}
+              className={`w-full rounded-xl py-4 text-base font-bold shadow-xl transition-all ${
+                !hasChanges || saving
+                  ? 'bg-slate-700 text-gray-400 cursor-not-allowed'
+                  : 'bg-lime-400 text-black hover:bg-lime-300'
+              }`}
+              whileTap={{ scale: 0.98 }}
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </motion.button>
+          )}
+          {isEditing && handleCancel}  {/* Call handleCancel on cancel button if needed */}
+          <motion.button
+            type="button"
+            onClick={handleDeleteAccount}
+            className="w-full bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 rounded-xl py-4 flex items-center justify-center gap-2 transition-all"
+            whileTap={{ scale: 0.98 }}
+          >
+            <Trash2 size={20} />
+            Delete Account
+          </motion.button>
+        </div>
       </div>
 
       <AddGradeModal
@@ -1401,7 +1962,57 @@ const Profile: React.FC = () => {
         subjects={Object.keys(SUBJECT_EMOJIS)}
       />
 
-     {/* Bottom Navigation */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        type={authType}
+        email={userEmail}
+        onSuccess={handleAuthSuccess}
+      />
+
+      {/* Verification Animation */}
+      <AnimatePresence>
+        {showVerificationAnimation && (
+          <motion.div
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowVerificationAnimation(false)}
+          >
+            <motion.div
+              className="bg-slate-900 rounded-2xl p-8 flex flex-col items-center max-w-sm mx-4"
+              initial={{ scale: 0, rotate: -180 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 260, damping: 20 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ShieldCheck size={64} className="text-emerald-400 mb-4" />
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="text-2xl font-bold text-white text-center mb-4"
+              >
+                Account Verified!
+              </motion.p>
+              <p className="text-gray-400 text-sm text-center mb-6">
+                Your account is now fully activated and synced across devices.
+              </p>
+              <motion.button
+                onClick={() => setShowVerificationAnimation(false)}
+                className="bg-emerald-500 text-white px-6 py-3 rounded-xl font-semibold"
+                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.05 }}
+              >
+                Awesome!
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bottom Navigation */}
       <motion.div 
         className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 grid grid-cols-5 place-items-center py-3 z-40"
         initial={{ y: 100 }}

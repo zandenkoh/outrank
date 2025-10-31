@@ -1,11 +1,12 @@
+// Updated: rankings/page.tsx
 "use client"
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, TrendingDown, ChevronLeft, Trophy, ChevronRight, Users, BarChart3, Calendar, Sparkles, Crown, ArrowUpRight, Lock, Shield, X, Filter, Search, Plus } from 'lucide-react';
+import { TrendingUp, TrendingDown, ChevronLeft, Trophy, ChevronRight, Users, BarChart3, Calendar, Sparkles, Crown, ArrowUpRight, Lock, Shield, X, Filter, Search, Plus, Users2, Share2, PlusCircle, UserPlus } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient, PostgrestError } from '@supabase/supabase-js';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -18,6 +19,7 @@ const formatDate = (date: Date | string): string => {
 };
 
 const getOrdinal = (n: number): string => {
+  if (n < 1) return '1st'; // Fallback for invalid ranks
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
@@ -72,6 +74,24 @@ interface Subject {
   total_students: number;
 }
 
+interface Group {
+  id: string;
+  name: string;
+  description?: string;
+  creator_id: string;
+  invite_code: string;
+  member_count: number;
+  average_overall: number | null;
+  created_at: string;
+}
+
+interface GroupMember {
+  user_id: string;
+  nickname: string;
+  role: 'admin' | 'member';
+  joined_at: string;
+}
+
 interface FormData {
   subject: string;
   assessment_name: string;
@@ -83,6 +103,15 @@ interface FormData {
   assessment_date: string;
 }
 
+interface GroupFormData {
+  name: string;
+  description?: string;
+}
+
+interface JoinGroupFormData {
+  // No form data needed, just confirmation
+}
+
 interface Errors {
   [key: string]: string;
 }
@@ -92,6 +121,9 @@ interface HeaderProps {
   date?: Date;
   isScrolled?: boolean;
   activeTab: string;
+  showBack?: boolean;
+  onBack?: () => void;
+  title?: string;
 }
 
 interface StatCardProps {
@@ -132,6 +164,20 @@ interface AddGradeModalProps {
   subjects: string[];
 }
 
+interface CreateGroupModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (data: GroupFormData) => void;
+}
+
+interface JoinGroupModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  group: Group | null;
+  onJoin: () => void;
+  loading: boolean;
+}
+
 interface TabButtonProps {
   active: boolean;
   onClick: () => void;
@@ -139,8 +185,15 @@ interface TabButtonProps {
   icon: React.ComponentType<{ size?: number; className?: string }>;
 }
 
-// Header Component (adapted for Rankings)
-const Header: React.FC<HeaderProps> = ({ user, date = new Date(), isScrolled = false, activeTab = 'overall' }) => (
+interface GroupItemProps {
+  group: Group;
+  isCreator: boolean;
+  onTap: (group: Group) => void;
+  onShare: (group: Group) => void;
+}
+
+// Header Component (adapted for Rankings and Groups)
+const Header: React.FC<HeaderProps> = ({ user, date = new Date(), isScrolled = false }) => (
   <motion.div 
     className={`sticky top-0 bg-slate-900/95 backdrop-blur-xl z-50 px-5 transition-all duration-300 ease-out border-b border-slate-800 ${isScrolled ? 'py-3' : 'pt-6 pb-4'}`}
     initial={false}
@@ -161,7 +214,7 @@ const Header: React.FC<HeaderProps> = ({ user, date = new Date(), isScrolled = f
     </AnimatePresence>
     <div className="flex justify-between items-center">
       <motion.h1 
-        className="font-bold bg-gradient-to-r from-lime-400 to-emerald-400 bg-clip-text text-transparent"
+        className="font-bold bg-gradient-to-r from-lime-400 via-lime-500 to-lime-600 bg-clip-text text-transparent"
         animate={{ fontSize: isScrolled ? '20px' : '32px' }}
         transition={{ duration: 0.3 }}
       >
@@ -173,19 +226,8 @@ const Header: React.FC<HeaderProps> = ({ user, date = new Date(), isScrolled = f
         transition={{ duration: 0.3 }}
         whileTap={{ scale: 0.9 }}
       >
-        {(user?.nickname || 'U')[0].toUpperCase()}
+        {user?.nickname?.[0]?.toUpperCase() || 'U'}
       </motion.div>
-    </div>
-    {/* Tab Indicators */}
-    <div className="flex justify-center mt-3 space-x-1">
-      {['overall', 'subjects'].map((tab) => (
-        <motion.div
-          key={tab}
-          className={`h-1 rounded-full transition-all duration-300 ${activeTab === tab ? 'w-6 bg-lime-400' : 'w-3 bg-slate-700'}`}
-          initial={false}
-          animate={{ width: activeTab === tab ? 24 : 12 }}
-        />
-      ))}
     </div>
   </motion.div>
 );
@@ -266,7 +308,7 @@ const SchoolRankingItem: React.FC<SchoolRankingItemProps> = ({ school, index, is
 
 // Subject Ranking Item
 const SubjectRankingItem: React.FC<SubjectRankingItemProps> = ({ subject, index, userPercentile, onTap }) => {
-  const safeUserPerc = userPercentile || 0;
+  const safeUserPerc = Math.min(100, Math.max(0, userPercentile || 0));
   const isTop = safeUserPerc >= 80;
 
   return (
@@ -302,6 +344,60 @@ const SubjectRankingItem: React.FC<SubjectRankingItemProps> = ({ subject, index,
         )}
       </div>
     </motion.div>
+  );
+};
+
+// Subjects Modal (Full Screen)
+const SubjectsModal: React.FC<{ isOpen: boolean; onClose: () => void; subjectRankings: Subject[]; userPercentiles: Record<string, number> }> = ({ isOpen, onClose, subjectRankings, userPercentiles }) => {
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div 
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex flex-col"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <motion.div 
+          className="bg-slate-900 rounded-t-3xl w-full flex-1 overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        >
+          <div className="p-6 space-y-6 pt-12">
+            <div className="flex justify-between items-center mb-6">
+              <button onClick={onClose} className="p-2 rounded-full bg-slate-800 hover:bg-slate-700">
+                <ChevronLeft size={20} />
+              </button>
+              <h2 className="text-xl font-bold text-white">Subject Rankings</h2>
+              <div className="w-8" />
+            </div>
+            {subjectRankings.length > 0 ? (
+              <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                <h3 className="text-gray-400 text-xs uppercase tracking-wide p-4 border-b border-slate-700 font-medium">National Subject Averages</h3>
+                <div className="divide-y divide-slate-700">
+                  {subjectRankings.map((sub, index) => (
+                    <SubjectRankingItem
+                      key={sub.subject}
+                      subject={sub}
+                      index={index}
+                      userPercentile={userPercentiles[sub.subject]}
+                      onTap={() => {}}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <EmptyRankingsState />
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 };
 
@@ -460,6 +556,98 @@ const EmptyRankingsState: React.FC = () => (
       </div>
     </div>
   </motion.div>
+);
+
+// Empty State for Groups
+const EmptyGroupsState: React.FC<{ onCreate: () => void }> = ({ onCreate }) => (
+  <motion.div 
+    className="flex flex-col items-center justify-center py-12 px-6 text-center bg-slate-900 border border-slate-800 rounded-2xl shadow-xl"
+    initial={{ opacity: 0, scale: 0.95 }}
+    animate={{ opacity: 1, scale: 1 }}
+    transition={{ duration: 0.6, ease: 'easeOut' }}
+  >
+    <div className="text-6xl mb-4">👥</div>
+    <h3 className="text-2xl font-bold text-white mb-3">No Groups Yet</h3>
+    <p className="text-gray-400 mb-8 max-w-md text-sm leading-relaxed">
+      Create a group to compare rankings with friends. Share a link to invite them!
+    </p>
+    <motion.button
+      onClick={onCreate}
+      className="bg-lime-400 text-black font-bold rounded-xl py-4 px-6 shadow-xl flex items-center gap-2 mb-4"
+      whileTap={{ scale: 0.98 }}
+      whileHover={{ scale: 1.02 }}
+    >
+      <PlusCircle size={20} />
+      Create Your First Group
+    </motion.button>
+  </motion.div>
+);
+
+// Group Item Component
+const GroupItem: React.FC<GroupItemProps> = ({ group, isCreator, onTap, onShare }) => (
+  <motion.div
+    className={`bg-slate-800 rounded-xl border border-slate-700 p-4 hover:bg-slate-700/50 transition-colors cursor-pointer ${isCreator ? 'border-l-4 border-l-purple-400' : ''}`}
+    onClick={() => onTap(group)}
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    whileHover={{ scale: 1.02 }}
+    whileTap={{ scale: 0.98 }}
+  >
+    <div className="flex justify-between items-start mb-2">
+      <div>
+        <h3 className="font-semibold text-white flex items-center gap-2">
+          {group.name}
+          {isCreator && <Crown size={14} className="text-purple-400" />}
+        </h3>
+        <p className="text-xs text-gray-400">{group.member_count} members</p>
+      </div>
+      <motion.button
+        onClick={(e) => {
+          e.stopPropagation();
+          onShare(group);
+        }}
+        className="p-2 rounded-full hover:bg-slate-600/50"
+        whileTap={{ scale: 0.9 }}
+      >
+        <Share2 size={16} className="text-gray-400" />
+      </motion.button>
+    </div>
+    {group.description && (
+      <p className="text-sm text-gray-500 line-clamp-2">{group.description}</p>
+    )}
+  </motion.div>
+);
+
+// Group List Component
+const GroupsList: React.FC<{ groups: Group[]; user: User; onCreate: () => void; onTap: (group: Group) => void; onShare: (group: Group) => void }> = ({ groups, user, onCreate, onTap, onShare }) => (
+  <div className="space-y-6">
+    <div className="flex justify-between items-center">
+      <h3 className="text-gray-400 text-xs uppercase tracking-wide font-medium">Your Groups</h3>
+      <motion.button
+        onClick={onCreate}
+        className="text-lime-400 hover:text-lime-300 text-sm flex items-center gap-1"
+        whileTap={{ scale: 0.98 }}
+      >
+        <Plus size={14} />
+        New Group
+      </motion.button>
+    </div>
+    {groups.length > 0 ? (
+      <div className="space-y-4">
+        {groups.map((group) => (
+          <GroupItem
+            key={group.id}
+            group={group}
+            isCreator={group.creator_id === user?.id}
+            onTap={onTap}
+            onShare={onShare}
+          />
+        ))}
+      </div>
+    ) : (
+      <EmptyGroupsState onCreate={onCreate} />
+    )}
+  </div>
 );
 
 // Tab Button
@@ -705,6 +893,217 @@ const AddGradeModal: React.FC<AddGradeModalProps> = ({ isOpen, onClose, onSubmit
   );
 };
 
+// Create Group Modal
+const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ isOpen, onClose, onSubmit }) => {
+  const [formData, setFormData] = useState<GroupFormData>({ name: '' });
+  const [errors, setErrors] = useState<Errors>({});
+
+  const validate = (): Errors => {
+    const newErrors: Errors = {};
+    if (!formData.name) newErrors.name = 'Group name is required';
+    if (formData.name.length < 3) newErrors.name = 'Name must be at least 3 characters';
+    return newErrors;
+  };
+
+  const handleSubmit = (): void => {
+    const newErrors = validate();
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    onSubmit(formData);
+    setFormData({ name: '' });
+    setErrors({});
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div 
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end justify-center z-50"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <motion.div 
+          className="bg-slate-900 rounded-t-3xl w-full max-w-md p-6 pb-8 shadow-2xl border-t border-slate-700 relative"
+          onClick={(e) => e.stopPropagation()}
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        >
+          <div className="mb-6">
+            <div className="flex justify-center mb-3">
+              <div className="w-12 h-1 bg-slate-700 rounded-full"></div>
+            </div>
+            <h2 className="text-2xl font-bold text-white text-center mb-4">Create Group</h2>
+            <button 
+              onClick={onClose} 
+              className="absolute top-6 right-4 text-gray-400 hover:text-white transition-colors"
+            >
+              <X size={24} />
+            </button>
+          </div>
+          
+          <div className="space-y-5">
+            <div>
+              <label className="block text-gray-400 text-sm mb-2 font-medium">Group Name</label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                placeholder="e.g., Math Study Buddies"
+                className={`w-full bg-slate-800 text-white border ${errors.name ? 'border-red-500' : 'border-slate-700'} rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all`}
+                maxLength={50}
+              />
+              {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name}</p>}
+            </div>
+
+            <div>
+              <label className="block text-gray-400 text-sm mb-2 font-medium">Description (Optional)</label>
+              <textarea
+                value={formData.description || ''}
+                onChange={(e) => setFormData({...formData, description: e.target.value})}
+                placeholder="What is this group for? (e.g., Weekly math quizzes)"
+                className="w-full bg-slate-800 text-white border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all resize-none"
+                rows={3}
+                maxLength={200}
+              />
+            </div>
+
+            <motion.button
+              onClick={handleSubmit}
+              className="w-full bg-lime-400 text-black font-bold rounded-xl py-4 text-base shadow-xl"
+              whileTap={{ scale: 0.98 }}
+              whileHover={{ scale: 1.02 }}
+            >
+              Create & Share
+            </motion.button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+// Join Group Modal
+const JoinGroupModal: React.FC<JoinGroupModalProps> = ({ isOpen, onClose, group, onJoin, loading }) => {
+  if (!isOpen || !group) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div 
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end justify-center z-50"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <motion.div 
+          className="bg-slate-900 rounded-t-3xl w-full max-w-md p-6 pb-8 shadow-2xl border-t border-slate-700 relative"
+          onClick={(e) => e.stopPropagation()}
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        >
+          <div className="mb-6">
+            <div className="flex justify-center mb-3">
+              <div className="w-12 h-1 bg-slate-700 rounded-full"></div>
+            </div>
+            <h2 className="text-2xl font-bold text-white text-center mb-4">Join Group</h2>
+            <button 
+              onClick={onClose} 
+              className="absolute top-6 right-4 text-gray-400 hover:text-white transition-colors"
+            >
+              <X size={24} />
+            </button>
+          </div>
+          
+          <div className="space-y-5">
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-white mb-2">{group.name}</h3>
+              {group.description && <p className="text-gray-400 text-sm mb-4">{group.description}</p>}
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-slate-800 rounded-xl p-3 text-center">
+                  <Users2 size={16} className="text-lime-400 mx-auto mb-1" />
+                  <p className="font-semibold text-white">{group.member_count}</p>
+                  <p className="text-xs text-gray-500">Members</p>
+                </div>
+                {group.average_overall && (
+                  <div className="bg-slate-800 rounded-xl p-3 text-center">
+                    <TrendingUp size={16} className="text-emerald-400 mx-auto mb-1" />
+                    <p className="font-semibold text-emerald-400">{group.average_overall.toFixed(1)}%</p>
+                    <p className="text-xs text-gray-500">Avg Score</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <motion.button
+              onClick={onJoin}
+              disabled={loading}
+              className="w-full bg-lime-400 text-black font-bold rounded-xl py-4 text-base shadow-xl disabled:opacity-50"
+              whileTap={{ scale: 0.98 }}
+              whileHover={{ scale: 1.02 }}
+            >
+              {loading ? 'Joining...' : 'Join Group'}
+            </motion.button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+// Share Group Modal (Simple overlay for copy link)
+const ShareGroupModal: React.FC<{ isOpen: boolean; onClose: () => void; shareUrl: string; groupName: string }> = ({ isOpen, onClose, shareUrl, groupName }) => {
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(shareUrl);
+    // Optional: Show toast
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div 
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <motion.div 
+          className="bg-slate-900 rounded-3xl w-full max-w-sm p-6 shadow-2xl border border-slate-700 text-center"
+          onClick={(e) => e.stopPropagation()}
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.95, opacity: 0 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        >
+          <h3 className="text-xl font-bold text-white mb-4">Share {groupName}</h3>
+          <p className="text-gray-400 text-sm mb-4">Invite friends with this link:</p>
+          <div className="bg-slate-800 rounded-xl p-3 mb-4">
+            <p className="text-xs text-gray-300 break-all">{shareUrl}</p>
+          </div>
+          <motion.button
+            onClick={copyToClipboard}
+            className="w-full bg-lime-400 text-black font-bold rounded-xl py-3 mb-3"
+            whileTap={{ scale: 0.98 }}
+          >
+            Copy Link
+          </motion.button>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-sm">Done</button>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
 // Main Rankings Component
 const Rankings: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -712,15 +1111,27 @@ const Rankings: React.FC = () => {
   const [subjectRankings, setSubjectRankings] = useState<Subject[]>([]);
   const [userPercentiles, setUserPercentiles] = useState<Record<string, number>>({});
   const [schoolPercentiles, setSchoolPercentiles] = useState<Record<string, number>>({});
-  const [activeTab, setActiveTab] = useState<'overall' | 'subjects'>('overall');
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [activeTab, setActiveTab] = useState<'overall' | 'groups'>('overall');
   const [loading, setLoading] = useState<boolean>(true);
   const [isScrolled, setIsScrolled] = useState<boolean>(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inviteCode = searchParams.get('invite');
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [isSubjectsModalOpen, setIsSubjectsModalOpen] = useState<boolean>(false);
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState<boolean>(false);
+  const [isShareGroupOpen, setIsShareGroupOpen] = useState<boolean>(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [shareGroupName, setShareGroupName] = useState('');
   const [userSchoolFallback, setUserSchoolFallback] = useState<boolean>(false);
   // New state for school insights modal
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [isSchoolModalOpen, setIsSchoolModalOpen] = useState<boolean>(false);
+  // New state for join group invite
+  const [pendingGroup, setPendingGroup] = useState<Group | null>(null);
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState<boolean>(false);
+  const [joinLoading, setJoinLoading] = useState<boolean>(false);
 
   const refetchData = useCallback(async (currentUser: User): Promise<void> => {
     try {
@@ -789,7 +1200,7 @@ const Rankings: React.FC = () => {
               p_school_code: null  // national
             }) as { data: { percentile: number }[] | null };
           if (percData && percData.length > 0) {
-            userPerc[sub] = percData[0].percentile;
+            userPerc[sub] = Math.min(100, Math.max(0, percData[0].percentile || 0));
           } else {
             userPerc[sub] = 0;
           }
@@ -811,7 +1222,7 @@ const Rankings: React.FC = () => {
               p_school_code: currentUser.school_code  // school scope
             }) as { data: { percentile: number }[] | null };
           if (schoolPercData && schoolPercData.length > 0) {
-            schoolPerc[sub] = schoolPercData[0].percentile;
+            schoolPerc[sub] = Math.min(100, Math.max(0, schoolPercData[0].percentile || 0));
           } else {
             schoolPerc[sub] = 0;
           }
@@ -822,13 +1233,86 @@ const Rankings: React.FC = () => {
       }
       setSchoolPercentiles(schoolPerc);
 
+      // Fetch user's groups
+      const { data: groupsData, error: groupsError } = await supabase
+        .rpc('get_user_groups', { p_user_id: currentUser.id }) as { data: Group[] | null; error: PostgrestError | null };
+      if (groupsError) {
+        console.error('Groups fetch error:', groupsError);
+        setGroups([]);
+      } else {
+        setGroups(groupsData || []);
+      }
+
     } catch (err) {
       console.error('Error refetching rankings data:', err);
       setSchoolRankings([]);
       setSubjectRankings([]);
+      setGroups([]);
       setUserSchoolFallback(true);
     }
   }, []);
+
+  // Handle invite flow
+  useEffect(() => {
+    const handleInvite = async () => {
+      if (!inviteCode || !user || loading) return;
+
+      try {
+        const { data: groupData, error } = await supabase.rpc('get_group_by_invite', { p_invite_code: inviteCode }) as { data: Group[] | null; error: PostgrestError | null };
+        if (error) {
+          console.error('Error fetching group by invite:', error);
+          return;
+        }
+
+        if (groupData && groupData.length > 0) {
+          const group = groupData[0];
+          // Check if already member
+          const isMember = groups.some(g => g.id === group.id);
+          if (!isMember) {
+            setPendingGroup(group);
+            setActiveTab('groups');
+            setIsJoinModalOpen(true);
+          } else {
+            // Already member, navigate directly
+            router.push(`/rankings/groups?id=${group.id}`);
+          }
+        }
+      } catch (err) {
+        console.error('Error handling invite:', err);
+      }
+    };
+
+    handleInvite();
+  }, [inviteCode, user, groups, loading, router]);
+
+  const handleJoinGroup = async () => {
+    if (!user || !pendingGroup) return;
+
+    setJoinLoading(true);
+    try {
+      const { data, error } = await supabase.rpc('join_group', {
+        p_user_id: user.id,
+        p_invite_code: pendingGroup.invite_code
+      }) as { data: { success: boolean }[] | null; error: PostgrestError | null };
+
+      if (error || !data || data.length === 0 || !data[0].success) {
+        console.error('Error joining group:', error);
+        return;
+      }
+
+      setIsJoinModalOpen(false);
+      setPendingGroup(null);
+      // Clear invite param from URL
+      router.replace('/rankings', undefined, { shallow: true, scroll: false });
+      await refetchData(user);
+      // Navigate to group page
+      router.push(`/rankings/groups?id=${pendingGroup.id}`);
+    } catch (err) {
+      console.error('Error in handleJoinGroup:', err);
+    } finally {
+      setJoinLoading(false);
+    }
+  };
 
   useEffect(() => {
     const loadData = async (): Promise<void> => {
@@ -962,6 +1446,46 @@ const Rankings: React.FC = () => {
     await refetchData(user);
   };
 
+const handleCreateGroup = async (formData: GroupFormData): Promise<void> => {
+  if (!user) return;
+
+  try {
+    const { data, error } = await supabase
+      .rpc('create_group', { 
+        p_creator_id: user.id,
+        p_name: formData.name,
+        p_description: formData.description || null
+      }) as { data: { group_id: string; invite_code: string }[] | null; error: PostgrestError | null };  // Note: array!
+
+    if (error) {
+      console.error('Error creating group:', error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      // No need for join_group - already done in RPC
+      setIsCreateGroupOpen(false);
+      await refetchData(user);
+      // Show share with data[0]
+      setShareUrl(`${window.location.origin}/rankings?invite=${data[0].invite_code}`);
+      setShareGroupName(formData.name);
+      setIsShareGroupOpen(true);
+    }
+  } catch (err) {
+    console.error('Error in create group:', err);
+  }
+};
+
+  const handleShareGroup = (group: Group) => {
+    setShareUrl(`${window.location.origin}/rankings?invite=${group.invite_code}`);
+    setShareGroupName(group.name);
+    setIsShareGroupOpen(true);
+  };
+
+  const handleGroupTap = (group: Group) => {
+    router.push(`/rankings/groups?id=${group.id}`);
+  };
+
   // New handler for school tap
   const handleSchoolTap = (school: School): void => {
     setSelectedSchool(school);
@@ -971,22 +1495,23 @@ const Rankings: React.FC = () => {
   // Derived stats
   const userSchool = schoolRankings.find(s => s.school_code === user?.school_code);
   const safeSchoolRank = userSchool?.national_rank || 1;
-  const safeSchoolAvg = userSchool?.average_overall || 0;
+  const safeSchoolAvg = Math.min(100, Math.max(0, userSchool?.average_overall || 0));
   const safeSchoolStudents = userSchool?.total_students || 0;
 
   const nationalAvgPerc = Object.values(userPercentiles).length > 0 
-    ? Object.values(userPercentiles).reduce((a, b) => a + b, 0) / Object.values(userPercentiles).length 
+    ? Math.min(100, Math.max(0, Object.values(userPercentiles).reduce((a, b) => a + b, 0) / Object.values(userPercentiles).length))
     : 0;
   const schoolAvgPerc = Object.values(schoolPercentiles).length > 0 
-    ? Object.values(schoolPercentiles).reduce((a, b) => a + b, 0) / Object.values(schoolPercentiles).length 
+    ? Math.min(100, Math.max(0, Object.values(schoolPercentiles).reduce((a, b) => a + b, 0) / Object.values(schoolPercentiles).length))
     : 0;
 
   const bestSubject = Object.entries(schoolPercentiles).reduce((a, b) => (b[1] > a[1] ? b : a), ['', 0] as [string, number]);
   const subjectsAboveSchoolAvg = Object.values(schoolPercentiles).filter(p => p > 50).length;
   const nationalRankEstimate = Math.round(100 - nationalAvgPerc); // Rough estimate: higher perc = lower rank number
+  const clampedNationalRankEstimate = Math.max(1, nationalRankEstimate);
 
   if (loading) {
-    return (
+      return (
       <div className="min-h-screen bg-slate-900 text-white">
         <Header user={null} isScrolled={false} activeTab={activeTab} />
         <div className="px-5 py-6 space-y-6">
@@ -1030,11 +1555,11 @@ const Rankings: React.FC = () => {
             Overall
           </TabButton>
           <TabButton
-            active={activeTab === 'subjects'}
-            onClick={() => setActiveTab('subjects')}
-            icon={Sparkles}
+            active={activeTab === 'groups'}
+            onClick={() => setActiveTab('groups')}
+            icon={Users2}
           >
-            Subjects
+            Groups
           </TabButton>
         </div>
 
@@ -1053,28 +1578,29 @@ const Rankings: React.FC = () => {
                   onTap={() => {}}
                 />
                 <StatCard
+                  title="National Percentile"
+                  value={`${Math.min(100, Math.max(0, nationalAvgPerc)).toFixed(0)}%`}
+                  subtitle="vs all students"
+                  progress={Math.min(100, Math.max(0, nationalAvgPerc))}
+                  icon={<TrendingUp size={18} />}
+                  color="#3B82F6"
+                  onTap={() => {}}
+                />
+
+                <StatCard
                   title="School Percentile"
-                  value={`${schoolAvgPerc.toFixed(0)}%`}
+                  value={`${Math.min(100, Math.max(0, schoolAvgPerc)).toFixed(0)}%`}
                   subtitle="vs peers in school"
-                  progress={schoolAvgPerc}
+                  progress={Math.min(100, Math.max(0, schoolAvgPerc))}
                   icon={<Users size={18} />}
                   color="#10B981"
                   onTap={() => {}}
                 />
                 <StatCard
-                  title="National Percentile"
-                  value={`${nationalAvgPerc.toFixed(0)}%`}
-                  subtitle="vs all students"
-                  progress={nationalAvgPerc}
-                  icon={<TrendingUp size={18} />}
-                  color="#3B82F6"
-                  onTap={() => {}}
-                />
-                <StatCard
                   title="Est. National Rank"
-                  value={userSchoolFallback ? 'N/A' : getOrdinal(nationalRankEstimate)}
+                  value={userSchoolFallback ? 'N/A' : getOrdinal(clampedNationalRankEstimate)}
                   subtitle="Based on avg percentile"
-                  progress={nationalAvgPerc}
+                  progress={Math.min(100, Math.max(0, nationalAvgPerc))}
                   icon={<Trophy size={18} />}
                   color="#F59E0B"
                   onTap={() => {}}
@@ -1099,53 +1625,23 @@ const Rankings: React.FC = () => {
                 />
               </div>
 
-              {/* School Rankings Chart */}
-              {schoolRankings.length > 0 ? (
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-gray-400 text-xs uppercase tracking-wide font-medium">National School Rankings</h3>
-                    <p className="text-xs text-gray-500">{user?.level?.replace('_', ' ')?.toUpperCase() || 'N/A'}</p>
+              {/* Button to View Subjects */}
+              <motion.button
+                onClick={() => setIsSubjectsModalOpen(true)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-4 text-left hover:bg-slate-700 transition-colors flex items-center justify-between"
+                whileTap={{ scale: 0.98 }}
+              >
+                <div className="flex items-center gap-3">
+                  <Sparkles size={20} className="text-purple-400" />
+                  <div>
+                    <p className="font-semibold text-white">Subject Breakdown</p>
+                    <p className="text-sm text-gray-400">View national subject averages & your percentiles</p>
                   </div>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={schoolRankings} layout="vertical">
-                      <CartesianGrid stroke="#374151" vertical={false} />
-                      <XAxis 
-                        type="number" 
-                        domain={[0, 100]} 
-                        stroke="#9CA3AF" 
-                        fontSize={12}
-                        tickLine={false}
-                      />
-                      <YAxis 
-                        type="category" 
-                        dataKey="school_name" 
-                        stroke="#9CA3AF" 
-                        fontSize={12}
-                        tickLine={false}
-                        width={120}
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: '#1E293B', 
-                          border: '1px solid #475569', 
-                          borderRadius: '12px',
-                          color: '#F9FAFB' 
-                        }} 
-                      />
-                      <Bar dataKey="average_overall" fill="#84CC16" radius={[4, 4, 0, 0]}>
-                        {schoolRankings.map((entry, index) => {
-                          const isUserSchool = entry.school_code === user?.school_code;
-                          return <Cell key={`cell-${index}`} fill={isUserSchool ? '#10B981' : '#84CC16'} />;
-                        })}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
                 </div>
-              ) : (
-                <EmptyRankingsState />
-              )}
+                <ChevronRight size={20} className="text-gray-500" />
+              </motion.button>
 
-              {/* Top Schools List */}
+              {/* Top Schools List (No Chart) */}
               {schoolRankings.length > 0 && (
                 <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
                   <h3 className="text-gray-400 text-xs uppercase tracking-wide p-4 border-b border-slate-700 font-medium">Top Schools</h3>
@@ -1165,31 +1661,15 @@ const Rankings: React.FC = () => {
             </>
           )}
 
-          {activeTab === 'subjects' && (
-            <>
-              {/* Subject Rankings */}
-              {subjectRankings.length > 0 ? (
-                <div className="space-y-6">
-                  <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-                    <h3 className="text-gray-400 text-xs uppercase tracking-wide p-4 border-b border-slate-700 font-medium">National Subject Averages</h3>
-                    <div className="divide-y divide-slate-700">
-                      {subjectRankings.map((sub, index) => (
-                        <SubjectRankingItem
-                          key={sub.subject}
-                          subject={sub}
-                          index={index}
-                          userPercentile={userPercentiles[sub.subject]}
-                          onTap={() => {}}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <EmptyRankingsState />
-              )}
-            </>
-          )}
+{activeTab === 'groups' && (
+    <GroupsList
+      groups={groups}
+      user={user}
+      onCreate={() => setIsCreateGroupOpen(true)}
+      onTap={handleGroupTap}
+      onShare={handleShareGroup}
+    />
+  )}
         </AnimatePresence>
       </div>
 
@@ -1198,6 +1678,34 @@ const Rankings: React.FC = () => {
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleAddGrade}
         subjects={Object.keys(SUBJECT_EMOJIS)}
+      />
+
+      <SubjectsModal
+        isOpen={isSubjectsModalOpen}
+        onClose={() => setIsSubjectsModalOpen(false)}
+        subjectRankings={subjectRankings}
+        userPercentiles={userPercentiles}
+      />
+
+      <CreateGroupModal
+        isOpen={isCreateGroupOpen}
+        onClose={() => setIsCreateGroupOpen(false)}
+        onSubmit={handleCreateGroup}
+      />
+
+      <JoinGroupModal
+        isOpen={isJoinModalOpen}
+        onClose={() => setIsJoinModalOpen(false)}
+        group={pendingGroup}
+        onJoin={handleJoinGroup}
+        loading={joinLoading}
+      />
+
+      <ShareGroupModal
+        isOpen={isShareGroupOpen}
+        onClose={() => setIsShareGroupOpen(false)}
+        shareUrl={shareUrl}
+        groupName={shareGroupName}
       />
 
       {/* New School Insights Modal */}

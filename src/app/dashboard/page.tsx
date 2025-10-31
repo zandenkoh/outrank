@@ -1157,18 +1157,25 @@ if (fetchError && fetchError.code !== 'PGRST116') {
 
   const safeSchoolPerc = percentile.school.percentile || 0;
   const safeNatPerc = percentile.national.percentile || 0;
+
   const safeSchoolTotal = percentile.school.total || 0;
   const safeNatTotal = percentile.national.total || 0;
+
+  const clampedSchoolRank = Math.max(1, Math.min(safeSchoolTotal, Math.max(1, percentile.school.rank || 1)));
+  const clampedNatRank = Math.max(1, Math.min(safeNatTotal, Math.max(1, percentile.national.rank || 1)));
+  
   const safeSchoolRank = percentile.school.rank || 1;
   const safeNatRank = percentile.national.rank || 1;
-  const safeSchoolBetter = Math.max(0, safeSchoolTotal - safeSchoolRank);
-  const safeNatBetter = Math.max(0, safeNatTotal - safeNatRank);
+const safeSchoolBetter = Math.max(0, safeSchoolTotal - clampedSchoolRank);
+const safeNatBetter = Math.max(0, safeNatTotal - clampedNatRank);
 
-  const getOrdinal = (n: number): string => {
-    const s = ['th', 'st', 'nd', 'rd'];
-    const v = n % 100;
-    return n + (s[(v - 20) % 10] || s[v] || s[0]);
-  };
+const getOrdinal = (n: number): string => {
+  if (n < 1) return '1st'; // Fallback for invalid ranks
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  const suffix = s[(v - 20) % 10] || s[v] || s[0];
+  return n + suffix;
+};
 
   return (
     <div className="min-h-screen bg-slate-900 text-white pb-24">
@@ -1182,24 +1189,25 @@ if (fetchError && fetchError.code !== 'PGRST116') {
             <OverallAverageCard average={overallAverage} trend={trend} />
 
             <div className="grid grid-cols-2 gap-4">
-              <StatCard
-                title="School Ranking"
-                value={getOrdinal(safeSchoolRank)}
-                subtitle={`Better than ${safeSchoolBetter} peers`}
-                progress={safeSchoolPerc}
-                icon={<Crown size={18} />}
-                color="#A855F7"
-                onTap={() => {}}
-              />
-              <StatCard
-                title="National Ranking"
-                value={getOrdinal(safeNatRank)}
-                subtitle={`Better than ${safeNatBetter} students`}
-                progress={safeNatPerc}
-                icon={<Crown size={18} />}
-                color="#06B6D4"
-                onTap={() => {}}
-              />
+<StatCard
+  title="School Ranking"
+  value={getOrdinal(clampedSchoolRank)}
+  subtitle={`Better than ${safeSchoolBetter} peers`}
+  progress={Math.min(100, Math.max(0, percentile.school.percentile || 0))}
+  icon={<Crown size={18} />}
+  color="#A855F7"
+  onTap={() => {}}
+/>
+
+<StatCard
+  title="National Ranking"
+  value={getOrdinal(clampedNatRank)}
+  subtitle={`Better than ${safeNatBetter} students`}
+  progress={Math.min(100, Math.max(0, percentile.national.percentile || 0))}
+  icon={<Crown size={18} />}
+  color="#06B6D4"
+  onTap={() => {}}
+/>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
