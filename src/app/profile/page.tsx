@@ -685,6 +685,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, type, email: pre
           const { data: grades } = await supabase.from('grades').select('*').eq('user_id', oldId);
           migrationData = {
             oldId,
+            newId: null as string | null, // Allow string or null type
             dbUser: dbUser,
             grades: grades || []
           };
@@ -717,9 +718,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, type, email: pre
           return;
         }
 
-        // Add newId to migrationData
-        migrationData.newId = user.id;
-        localStorage.setItem('pendingMigration', JSON.stringify(migrationData));
+        // Add newId to migrationData if it exists
+        if (migrationData) {
+          migrationData.newId = user.id;
+          localStorage.setItem('pendingMigration', JSON.stringify(migrationData));
+        }
 
         setSent(true);
         localStorage.setItem('verificationSent', 'true');
@@ -794,7 +797,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, type, email: pre
       // Success: verified and signed in
       onSuccess();
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setErrors({ general: 'An error occurred. Please try again.' });
     } finally {
       setLoading(false);
@@ -1043,11 +1046,13 @@ const Profile: React.FC = () => {
   // Helper to ensure user exists and return it
   const ensureUserExists = async (sessionUserId: string, localUser: Partial<User>): Promise<User> => {
     // Use maybeSingle to avoid 406/PGRST116 on empty
-    let { data: existingUser, error: fetchError } = await supabase
+    const fetchRes = await supabase
       .from('users')
       .select('*')
       .eq('id', sessionUserId)
       .maybeSingle();
+    let existingUser = fetchRes.data;
+    const fetchError = fetchRes.error;
 
     if (fetchError && fetchError.code !== 'PGRST116') {
       console.error('Unexpected fetch error:', fetchError);
@@ -1093,11 +1098,12 @@ const Profile: React.FC = () => {
           console.error('Update error (non-fatal):', updateError);
         } else {
           // Refetch after update
-          ({ data: existingUser } = await supabase
+          const { data: refetchedUser } = await supabase
             .from('users')
             .select('*')
             .eq('id', sessionUserId)
-            .single());
+            .single();
+          existingUser = refetchedUser;
         }
       }
       return existingUser as User;
@@ -1222,13 +1228,21 @@ const Profile: React.FC = () => {
       }
 
       // Ensure user exists (handles creation or fetch)
-      if (!user) {
+        if (!user) {
         const dbUser = await ensureUserExists(session.user.id, localUser);
         setUser(dbUser);
 
-        // Update localStorage
-        const { data_retention: _, ...filteredLocalUser } = localUser;
-        const updatedLocalUser = { ...filteredLocalUser, id: session.user.id };
+        // Update localStorage — copy only known user fields (avoid referencing local-only settings like data_retention)
+        const updatedLocalUser = {
+          id: session.user.id,
+          nickname: localUser.nickname ?? dbUser.nickname ?? 'Student',
+          school_code: localUser.school_code ?? dbUser.school_code ?? 'RI',
+          school_name: localUser.school_name ?? dbUser.school_name ?? 'Raffles Institution',
+          level: localUser.level ?? dbUser.level ?? 'sec_4',
+          opted_in_cohort: localUser.opted_in_cohort ?? dbUser.opted_in_cohort ?? true,
+          avatar_seed: localUser.avatar_seed ?? dbUser.avatar_seed
+        } as Partial<User> & { id: string };
+
         localStorage.setItem('outrankUser', JSON.stringify(updatedLocalUser));
       }
 
@@ -1918,15 +1932,15 @@ const Profile: React.FC = () => {
 
         {/* Edit and Delete Buttons - Moved to bottom of content */}
         <div className="space-y-4 pt-6 border-t border-slate-700">
-          <motion.button
-            type="button"
-            onClick={() => setIsEditing(!isEditing)}
-            className="w-full bg-lime-500/10 border border-lime-500/30 text-lime-400 hover:bg-lime-500/20 rounded-xl py-4 flex items-center justify-center gap-2 transition-all"
-            whileTap={{ scale: 0.98 }}
-          >
-            <Edit3 size={20} />
-            {isEditing ? 'Cancel Edit' : 'Edit Profile'}
-          </motion.button>
+<motion.button
+  type="button"
+  onClick={isEditing ? handleCancel : () => setIsEditing(true)}
+  className="w-full bg-lime-500/10 border border-lime-500/30 text-lime-400 hover:bg-lime-500/20 rounded-xl py-4 flex items-center justify-center gap-2 transition-all"
+  whileTap={{ scale: 0.98 }}
+>
+  <Edit3 size={20} />
+  {isEditing ? 'Cancel Edit' : 'Edit Profile'}
+</motion.button>
           {isEditing && (
             <motion.button
               type="button"
@@ -1942,7 +1956,6 @@ const Profile: React.FC = () => {
               {saving ? 'Saving...' : 'Save Changes'}
             </motion.button>
           )}
-          {isEditing && handleCancel}  {/* Call handleCancel on cancel button if needed */}
           <motion.button
             type="button"
             onClick={handleDeleteAccount}
