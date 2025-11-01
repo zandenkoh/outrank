@@ -1,7 +1,7 @@
 // Updated: rankings/page.tsx
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { TrendingUp, TrendingDown, ChevronLeft, Trophy, ChevronRight, Users, BarChart3, Calendar, Sparkles, Crown, ArrowUpRight, Lock, Shield, X, Filter, Search, Plus, Users2, Share2, PlusCircle, UserPlus } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1101,7 +1101,7 @@ const ShareGroupModal: React.FC<{ isOpen: boolean; onClose: () => void; shareUrl
 };
 
 // Main Rankings Component
-const Rankings: React.FC = () => {
+const RankingsContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [schoolRankings, setSchoolRankings] = useState<School[]>([]);
   const [subjectRankings, setSubjectRankings] = useState<Subject[]>([]);
@@ -1793,6 +1793,24 @@ const handleCreateGroup = async (formData: GroupFormData): Promise<void> => {
         }
       `}</style>
     </div>
+  );
+};
+
+const Rankings: React.FC = () => {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-900 text-white">
+        <div className="px-5 py-6 space-y-6">
+          <div className="bg-slate-800 rounded-2xl h-64 animate-pulse" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-slate-800 rounded-xl h-40 animate-pulse" />
+            <div className="bg-slate-800 rounded-xl h-40 animate-pulse" />
+          </div>
+        </div>
+      </div>
+    }>
+      <RankingsContent />
+    </Suspense>
   );
 };
 
