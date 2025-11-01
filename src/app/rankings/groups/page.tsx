@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { ChevronLeft, Users, TrendingUp, TrendingDown, BarChart3, Calendar, Sparkles, Crown, ArrowUpRight, Shield, X, Filter, Search, Plus, Share2, Trophy, UserCheck, Zap, BookOpen, Clock, Activity, FileText, Settings, Book, BarChart2, Users2, Home, Award, TrendingUp as TrendingUpIcon, TrendingDown as TrendingDownIcon, Edit2, Trash2, User, CheckCircle, AlertCircle, Copy } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Cell as PieCell } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1053,8 +1053,14 @@ return (
 };
 
 // Main Component
-const GroupRankings: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
+
+
+const GroupRankingsContent: React.FC = () => {
+  const searchParams = useSearchParams();
+  const groupId = searchParams.get('id');
+
+
+    const [user, setUser] = useState<User | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [stats, setStats] = useState<GroupStats | null>(null);
@@ -1071,8 +1077,6 @@ const GroupRankings: React.FC = () => {
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const groupId = searchParams.get('id');
 
   const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
     const newToast: Toast = { id: Date.now(), message, type };
@@ -1758,6 +1762,24 @@ dbUser = {
         }
       `}</style>
     </div>
+  );
+};
+
+const GroupRankings: React.FC = () => {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-900 text-white">
+        <div className="px-4 py-4 space-y-4">
+          <div className="bg-slate-800 rounded-2xl h-48 animate-pulse" />
+          <div className="space-y-3">
+            <div className="bg-slate-800 rounded-xl h-32 animate-pulse" />
+            <div className="bg-slate-800 rounded-xl h-32 animate-pulse" />
+          </div>
+        </div>
+      </div>
+    }>
+      <GroupRankingsContent />
+    </Suspense>
   );
 };
 
