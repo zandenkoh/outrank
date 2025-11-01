@@ -293,7 +293,7 @@ function Modal({ type, onClose, setActiveModal }: ModalProps) {
             </div>
           ))}
         </div>
-        <div className="bg-lime-400 bg-opacity-5 border border-lime-400 border-opacity-30 rounded-lg p-6 text-center">
+        <div className="bg-transparent bg-opacity-5 border border-lime-400 border-opacity-30 rounded-lg p-6 text-center">
           <p className="text-gray-300 mb-4">Ready to start improving your grades?</p>
           <button className="px-8 py-3 bg-lime-400 text-black font-bold rounded-lg hover:bg-lime-300 transition-colors">
             Get Started Free

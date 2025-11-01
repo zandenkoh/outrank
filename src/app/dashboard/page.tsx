@@ -815,7 +815,31 @@ const Dashboard: React.FC = () => {
   const [isScrolled, setIsScrolled] = useState<boolean>(false);
   const router = useRouter();
 
-  const refetchData = useCallback(async (currentUser: User): Promise<void> => {
+  // AUTH CHECK - Add this as the FIRST useEffect
+  useEffect(() => {
+    const checkAuth = async () => {
+      const localUserStr = localStorage.getItem('outrankUser');
+      
+      if (!localUserStr) {
+        router.replace('/onboarding');
+        return;
+      }
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          router.replace('/onboarding');
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        router.replace('/onboarding');
+      }
+    };
+
+    checkAuth();
+  }, [router]); // Only run once on mount
+
+const refetchData = useCallback(async (currentUser: User): Promise<void> => {
     try {
       // Fetch grades
       const { data: fetchedGrades, error } = await supabase

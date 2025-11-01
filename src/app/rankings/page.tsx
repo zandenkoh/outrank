@@ -108,10 +108,6 @@ interface GroupFormData {
   description?: string;
 }
 
-interface JoinGroupFormData {
-  // No form data needed, just confirmation
-}
-
 interface Errors {
   [key: string]: string;
 }
@@ -1303,7 +1299,7 @@ const Rankings: React.FC = () => {
       setIsJoinModalOpen(false);
       setPendingGroup(null);
       // Clear invite param from URL
-      router.replace('/rankings', undefined, { shallow: true, scroll: false });
+      router.replace('/rankings');
       await refetchData(user);
       // Navigate to group page
       router.push(`/rankings/groups?id=${pendingGroup.id}`);
@@ -1661,15 +1657,15 @@ const handleCreateGroup = async (formData: GroupFormData): Promise<void> => {
             </>
           )}
 
-{activeTab === 'groups' && (
-    <GroupsList
-      groups={groups}
-      user={user}
-      onCreate={() => setIsCreateGroupOpen(true)}
-      onTap={handleGroupTap}
-      onShare={handleShareGroup}
-    />
-  )}
+{activeTab === 'groups' && user && (
+  <GroupsList
+    groups={groups}
+    user={user}
+    onCreate={() => setIsCreateGroupOpen(true)}
+    onTap={handleGroupTap}
+    onShare={handleShareGroup}
+  />
+)}
         </AnimatePresence>
       </div>
 
