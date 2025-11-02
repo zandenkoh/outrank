@@ -179,6 +179,7 @@ export default function OnboardingFlow() {
   const [isAnimating, setIsAnimating] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Filter schools based on search
   const allSchools = [...SCHOOLS.secondary, ...SCHOOLS.jc, ...SCHOOLS.ib];
@@ -304,6 +305,30 @@ const handleComplete = async () => {
     if (step === 3) return selectedLevel !== null;
     return false;
   };
+
+  useEffect(() => {
+  const checkExistingUser = async () => {
+    // Synchronous localStorage check
+    const storedUser = localStorage.getItem('outrankUser');
+    if (storedUser) {
+      setIsLoading(false);
+      router.push('/dashboard');
+      return;
+    }
+
+    // Async Supabase session check
+    const { data } = await supabase.auth.getSession();
+    if (data?.session) {
+      setIsLoading(false);
+      router.push('/dashboard');
+      return;
+    }
+
+    setIsLoading(false);
+  };
+
+  checkExistingUser();
+}, [router]);
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">

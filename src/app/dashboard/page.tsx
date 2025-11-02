@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, TrendingUp, TrendingDown, ChevronLeft, Trophy, ChevronRight, Users, BarChart3, Calendar, Sparkles, Crown, ArrowUpRight, Lock, Shield, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Plus, TrendingUp, TrendingDown, ChevronLeft, Trophy, ChevronRight, Users, BarChart3, Calendar, Sparkles, Crown, ArrowUpRight, Lock, Shield, X, Settings } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createClient, PostgrestError } from '@supabase/supabase-js';
@@ -34,6 +34,7 @@ interface Grade {
   max_score: number;
   assessment_date: string;
   percentage?: number;
+  weight?: number;
   created_at: string;
   updated_at: string;
 }
@@ -64,6 +65,7 @@ interface SchoolStats {
   total_students: number;
   best_subject_average: number;
   improvement_amount: number;
+  average_overall?: number; // Add this line
 }
 
 interface TopSchool {
@@ -82,6 +84,7 @@ interface FormDataState {
   year: number;
   useSpecificDate: boolean;
   assessment_date: string;
+  weight?: number | undefined;
 }
 
 interface SubmitGrade {
@@ -90,6 +93,7 @@ interface SubmitGrade {
   score: number;
   max_score: number;
   assessment_date: string;
+  weight?: number;
 }
 
 // Utility functions
@@ -437,10 +441,12 @@ interface AddProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: SubmitGrade) => Promise<void>;
-  subjects: string[];
+  availableSubjects: string[];
+  enableWeights: boolean;
+  onOpenSettings: () => void;
 }
 
-const AddGradeModal: React.FC<AddProps> = ({ isOpen, onClose, onSubmit, subjects }) => {
+const AddGradeModal: React.FC<AddProps> = ({ isOpen, onClose, onSubmit, availableSubjects, enableWeights, onOpenSettings }) => {
   const [formData, setFormData] = useState<FormDataState>({
     subject: '',
     assessment_name: '',
@@ -449,7 +455,8 @@ const AddGradeModal: React.FC<AddProps> = ({ isOpen, onClose, onSubmit, subjects
     term: 1,
     year: new Date().getFullYear(),
     useSpecificDate: false,
-    assessment_date: new Date().toISOString().split('T')[0]
+    assessment_date: new Date().toISOString().split('T')[0],
+    weight: undefined
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -488,7 +495,8 @@ const AddGradeModal: React.FC<AddProps> = ({ isOpen, onClose, onSubmit, subjects
       ...formData, 
       assessment_date: finalDate,
       score: parseFloat(formData.score),
-      max_score: parseFloat(formData.max_score)
+      max_score: parseFloat(formData.max_score),
+      weight: formData.weight
     };
     await onSubmit(submitData);
     setFormData({
@@ -499,7 +507,8 @@ const AddGradeModal: React.FC<AddProps> = ({ isOpen, onClose, onSubmit, subjects
       term: 1,
       year: currentYear,
       useSpecificDate: false,
-      assessment_date: new Date().toISOString().split('T')[0]
+      assessment_date: new Date().toISOString().split('T')[0],
+      weight: undefined
     });
     setErrors({});
   };
@@ -527,13 +536,28 @@ const AddGradeModal: React.FC<AddProps> = ({ isOpen, onClose, onSubmit, subjects
             <div className="flex justify-center mb-3">
               <div className="w-12 h-1 bg-slate-700 rounded-full"></div>
             </div>
-            <h2 className="text-2xl font-bold text-white text-center mb-4">Add Grade</h2>
-            <button 
-              onClick={onClose} 
-              className="absolute top-6 right-4 text-gray-400 hover:text-white transition-colors"
-            >
-              <X size={24} />
-            </button>
+            <div className="relative">
+              <h2 className="text-2xl font-bold text-white text-center mb-4">Add Grade</h2>
+              {/* Buttons container aligned with title */}
+              <div className="absolute top-0 right-0 flex gap-2 p-1">
+                <button
+                  onClick={onOpenSettings}
+                  className="text-gray-400 hover:text-white transition-colors p-2 rounded-full"
+                  aria-label="Add grade settings"
+                  title="Settings"
+                >
+                  <Settings size={20} />
+                </button>
+                <button
+                  onClick={onClose}
+                  className="text-gray-400 hover:text-white transition-colors p-2 rounded-full"
+                  aria-label="Close add grade"
+                  title="Close"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
           </div>
           
           <div className="space-y-5">
@@ -541,11 +565,11 @@ const AddGradeModal: React.FC<AddProps> = ({ isOpen, onClose, onSubmit, subjects
               <label className="block text-gray-400 text-sm mb-2 font-medium">Subject</label>
               <select
                 value={formData.subject}
-                onChange={(e) => setFormData({...formData, subject: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
                 className={`w-full bg-slate-800 text-white border ${errors.subject ? 'border-red-500' : 'border-slate-700'} rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all`}
               >
                 <option value="">Select a subject</option>
-                {subjects.map(s => (
+                {availableSubjects.map(s => (
                   <option key={s} value={s}>
                     {SUBJECT_EMOJIS[s]} {s.charAt(0).toUpperCase() + s.slice(1)}
                   </option>
@@ -591,6 +615,23 @@ const AddGradeModal: React.FC<AddProps> = ({ isOpen, onClose, onSubmit, subjects
               </div>
             </div>
             {errors.score && <p className="text-red-400 text-xs -mt-3">{errors.score}</p>}
+
+            {enableWeights && (
+              <div>
+                <label className="block text-gray-400 text-sm mb-2 font-medium">Assignment Weight (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  value={formData.weight?.toString() ?? ''}
+                  onChange={(e) => setFormData({ ...formData, weight: e.target.value ? parseFloat(e.target.value) : undefined })}
+                  placeholder="e.g., 30"
+                  className="w-full bg-slate-800 text-white border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-400/50 transition-all"
+                />
+                <p className="text-xs text-gray-500 mt-1">Optional: use to calculate weighted contributions.</p>
+              </div>
+            )}
 
             {/* Term/Date Input */}
             <div>
@@ -661,6 +702,121 @@ const AddGradeModal: React.FC<AddProps> = ({ isOpen, onClose, onSubmit, subjects
   );
 };
 
+const AddGradeSettingsModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  presetSubjects: string[];
+  setPresetSubjects: (s: string[]) => void;
+  enableWeights: boolean;
+  setEnableWeights: (b: boolean) => void;
+}> = ({ isOpen, onClose, presetSubjects, setPresetSubjects, enableWeights, setEnableWeights }) => {
+  const [input, setInput] = useState<string>('');
+
+  useEffect(() => {
+    if (!isOpen) setInput('');
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const addSubject = () => {
+    const trimmed = input.trim().toLowerCase();
+    if (!trimmed || presetSubjects.includes(trimmed)) return;
+    setPresetSubjects(Array.from(new Set([trimmed, ...presetSubjects])));
+    setInput('');
+  };
+
+  const removeSubject = (s: string) => {
+    setPresetSubjects(presetSubjects.filter(x => x !== s));
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div 
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end justify-center z-60"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <motion.div
+          className="bg-slate-900 rounded-t-3xl w-full max-w-md p-6 pb-8 shadow-2xl border-t border-slate-700 relative"
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-6">
+            <div className="flex justify-center mb-3">
+              <div className="w-12 h-1 bg-slate-700 rounded-full"></div>
+            </div>
+            <div className="relative">
+              <h2 className="text-2xl font-bold text-white text-center mb-4">Settings</h2>
+              {/* Close button aligned with title */}
+              <button
+                onClick={onClose}
+                className="absolute top-0 right-0 text-gray-400 hover:text-white transition-colors p-2 rounded-full"
+                aria-label="Close settings"
+                title="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-gray-400 text-sm mb-2 block">Preset subjects (quick add)</label>
+              <div className="flex gap-2">
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addSubject()}
+                  placeholder="e.g. Further Mathematics"
+                  className="flex-1 bg-slate-800 text-white border border-slate-700 rounded-xl px-4 py-2 focus:outline-none"
+                />
+                <button onClick={addSubject} className="bg-lime-400 text-black px-4 py-2 rounded-xl font-medium">Add</button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {presetSubjects.map(s => (
+                  <span key={s} className="px-3 py-1 bg-slate-800 border border-slate-700 rounded-full text-xs flex items-center gap-2">
+                    <span>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
+                    <button onClick={() => removeSubject(s)} className="text-gray-400 hover:text-white p-1 rounded-full" title="Remove">
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+                {presetSubjects.length === 0 && <p className="text-xs text-gray-500 mt-2">No presets yet.</p>}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-200 font-medium">Enable assignment weightage</p>
+                <p className="text-xs text-gray-400">When enabled, you will see a weight (%) input for weighted scores.</p>
+              </div>
+              <div>
+                <label className="inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableWeights}
+                    onChange={(e) => setEnableWeights(e.target.checked)}
+                    className="form-checkbox h-5 w-5 text-lime-400 bg-slate-800 rounded"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button onClick={onClose} className="px-4 py-2 rounded-xl border border-slate-700 text-sm text-gray-300">Done</button>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};                 
+
 // Subject Detail Modal
 interface DetailProps {
   isOpen: boolean;
@@ -680,9 +836,8 @@ const SubjectDetailModal: React.FC<DetailProps> = ({ isOpen, subject, onClose })
   const safeAvg = Math.min(100, Math.max(0, subject.average || 0));
   const safeTrend = subject.trend || 0;
 
-  // In SubjectDetailModal
-  const recentGrades = sortedGrades.slice(-5); // remove .reverse()
-  
+  const recentGrades = sortedGrades.slice(-5);
+
   return (
     <AnimatePresence>
       <motion.div 
@@ -813,293 +968,308 @@ const Dashboard: React.FC = () => {
   const [selectedSubject, setSelectedSubject] = useState<SubjectData | null>(null);
   const [trend, setTrend] = useState<number>(0);
   const [isScrolled, setIsScrolled] = useState<boolean>(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [presetSubjects, setPresetSubjects] = useState<string[]>([]);
+  const [enableWeights, setEnableWeights] = useState<boolean>(false);
   const router = useRouter();
 
-  // AUTH CHECK - Add this as the FIRST useEffect
+  // Load settings from localStorage
   useEffect(() => {
-    const checkAuth = async () => {
-      const localUserStr = localStorage.getItem('outrankUser');
-      
-      if (!localUserStr) {
-        router.replace('/onboarding');
-        return;
-      }
-
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          router.replace('/onboarding');
-        }
-      } catch (error) {
-        console.error('Auth check failed:', error);
-        router.replace('/onboarding');
-      }
-    };
-
-    checkAuth();
-  }, [router]); // Only run once on mount
-
-const refetchData = useCallback(async (currentUser: User): Promise<void> => {
-    try {
-      // Fetch grades
-      const { data: fetchedGrades, error } = await supabase
-        .from('grades')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .order('assessment_date', { ascending: false });
-
-      if (error) throw error;
-
-      const currentGrades: Grade[] = fetchedGrades || [];
-      setGrades(currentGrades);
-
-      if (currentGrades.length > 0) {
-        // Calculate overall average
-        const avg = currentGrades.reduce((sum, g) => sum + (g.percentage || 0), 0) / currentGrades.length;
-        setOverallAverage(avg);
-
-        // Fetch school percentile
-        try {
-          const { data: schoolPercData } = await supabase.rpc('calculate_percentile', { 
-            p_user_id: currentUser.id, 
-            p_school_code: currentUser.school_code 
-          });
-          const schoolPerc = schoolPercData?.[0] || {};
-          setPercentile(prev => ({ 
-            ...prev, 
-            school: { 
-              percentile: schoolPerc.percentile || 0, 
-              rank: schoolPerc.rank || 1, 
-              total: schoolPerc.total || 1 
-            } 
-          }));
-        } catch (err) {
-          console.error('School percentile error:', err);
-        }
-
-        // Fetch national percentile
-        try {
-          const { data: nationalPercData } = await supabase.rpc('calculate_percentile', { 
-            p_user_id: currentUser.id 
-          });
-          const nationalPerc = nationalPercData?.[0] || {};
-          setPercentile(prev => ({ 
-            ...prev, 
-            national: { 
-              percentile: nationalPerc.percentile || 0, 
-              rank: nationalPerc.rank || 1, 
-              total: nationalPerc.total || 1 
-            } 
-          }));
-        } catch (err) {
-          console.error('National percentile error:', err);
-        }
-
-        // Fetch school stats
-        try {
-          const { data: schoolData } = await supabase
-            .from('school_stats')
-            .select('*')
-            .eq('school_code', currentUser.school_code)
-            .eq('level', currentUser.level)
-            .maybeSingle();
-          setSchoolStats(schoolData || { 
-            national_rank: 0, 
-            total_students: 0, 
-            best_subject_average: 0, 
-            improvement_amount: 0 
-          });
-        } catch (err) {
-          console.error('School stats error:', err);
-          setSchoolStats({ 
-            national_rank: 0, 
-            total_students: 0, 
-            best_subject_average: 0, 
-            improvement_amount: 0 
-          });
-        }
-
-        // Fetch top schools
-        try {
-          const { data: topSchoolsData } = await supabase
-            .from('school_stats')
-            .select('school_code, school_name, average_overall, national_rank')
-            .eq('level', currentUser.level)
-            .order('average_overall', { ascending: false })
-            .limit(5);
-          setTopSchools(topSchoolsData || []);
-        } catch (err) {
-          console.error('Top schools error:', err);
-        }
-
-        // Calculate subject data
-        const subjects = [...new Set(currentGrades.map(g => g.subject))];
-        const subjectStatsPromises = subjects.map(async (sub: string) => {
-          const subGrades = currentGrades.filter(g => g.subject === sub);
-          const sortedSubGrades = [...subGrades].sort((a, b) => new Date(a.assessment_date).getTime() - new Date(b.assessment_date).getTime());
-          const subAvg = sortedSubGrades.reduce((sum, g) => sum + (g.percentage || 0), 0) / sortedSubGrades.length;
-          const subTrend = sortedSubGrades.length >= 2 
-            ? (sortedSubGrades[sortedSubGrades.length - 1].percentage || 0) - (sortedSubGrades[0].percentage || 0) 
-            : 0;
-
-          let subPerc = 0;
-          try {
-            const { data: subPercData } = await supabase.rpc('calculate_percentile', { 
-              p_user_id: currentUser.id, 
-              p_school_code: currentUser.school_code, 
-              p_subject: sub 
-            });
-            subPerc = subPercData?.[0]?.percentile || 0;
-          } catch (err) {
-            console.error('Subject percentile error:', err);
-          }
-
-          return { 
-            subject: sub, 
-            average: subAvg, 
-            trend: subTrend, 
-            percentile: subPerc, 
-            grades: sortedSubGrades 
-          };
-        });
-        
-        const subjectStats = await Promise.all(subjectStatsPromises);
-        setSubjectData(subjectStats);
-
-        // Compute best subject
-        if (subjectStats.length > 0) {
-          const best = subjectStats.reduce((prev, curr) => 
-            (prev.average > curr.average ? prev : curr)
-          );
-          setBestSubject(best.subject);
-          setBestAvg(best.average);
-        }
-
-        // Calculate overall trend
-        const recentCount = Math.min(3, currentGrades.length);
-        const recentAvg = currentGrades.slice(0, recentCount)
-          .reduce((sum, g) => sum + (g.percentage || 0), 0) / recentCount;
-        const olderSlice = currentGrades.slice(recentCount, recentCount * 2);
-        const olderAvg = olderSlice.length > 0 
-          ? olderSlice.reduce((sum, g) => sum + (g.percentage || 0), 0) / olderSlice.length 
-          : recentAvg;
-        setTrend(recentAvg - olderAvg);
-      } else {
-        setOverallAverage(0);
-        setSubjectData([]);
-        setTrend(0);
-        setBestSubject(null);
-        setBestAvg(0);
-      }
-    } catch (err) {
-      console.error('Error refetching data:', err);
+    const savedPresets = localStorage.getItem('presetSubjects');
+    if (savedPresets) {
+      setPresetSubjects(JSON.parse(savedPresets));
+    }
+    const savedWeights = localStorage.getItem('enableWeights');
+    if (savedWeights !== null) {
+      setEnableWeights(JSON.parse(savedWeights));
     }
   }, []);
 
+  // Save settings to localStorage
+  useEffect(() => {
+    localStorage.setItem('presetSubjects', JSON.stringify(presetSubjects));
+  }, [presetSubjects]);
+
+  useEffect(() => {
+    localStorage.setItem('enableWeights', JSON.stringify(enableWeights));
+  }, [enableWeights]);
+
+  const availableSubjects = useMemo(() => 
+    Array.from(new Set([...presetSubjects, ...Object.keys(SUBJECT_EMOJIS)])),
+    [presetSubjects]
+  );
+
+const refetchData = useCallback(async (currentUser: User): Promise<void> => {
+  try {
+    // Fetch grades
+    const { data: fetchedGrades, error } = await supabase
+      .from('grades')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .order('assessment_date', { ascending: false });
+
+    if (error) throw error;
+
+    const currentGrades: Grade[] = fetchedGrades || [];
+    setGrades(currentGrades);
+
+    if (currentGrades.length > 0) {
+      // Calculate overall average (weighted)
+      const totalWeight = currentGrades.reduce((sum, g) => sum + (g.weight || 1), 0);
+      const weightedSum = currentGrades.reduce((sum, g) => sum + ((g.percentage || 0) * (g.weight || 1)), 0);
+      const avg = totalWeight > 0 ? weightedSum / totalWeight : 0;
+      setOverallAverage(avg);
+
+      // Helper to call percentile RPC safely
+      const callPercentile = async (params: { p_user_id: string; p_school_code?: string; p_subject?: string }) => {
+        if (!params.p_user_id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.p_user_id)) {
+          console.error('Invalid UUID for percentile:', params.p_user_id);
+          return { percentile: 0, rank: 1, total: 1 };
+        }
+        try {
+          const { data } = await supabase.rpc('calculate_percentile', {
+            p_user_id: params.p_user_id,
+            p_school_code: params.p_school_code || null,
+            p_subject: params.p_subject || null
+          });
+          return data?.[0] || { percentile: 0, rank: 1, total: 1 };
+        } catch (err: any) {
+          console.error('RPC Error:', err.message || err);
+          return { percentile: 0, rank: 1, total: 1 };
+        }
+      };
+
+      // Fetch school percentile
+      try {
+        const schoolPerc = await callPercentile({ 
+          p_user_id: currentUser.id, 
+          p_school_code: currentUser.school_code 
+        });
+        setPercentile(prev => ({ 
+          ...prev, 
+          school: { 
+            percentile: schoolPerc.percentile || 0, 
+            rank: schoolPerc.rank || 1, 
+            total: schoolPerc.total || 1 
+          } 
+        }));
+      } catch (err) {
+        console.error('School percentile error:', err);
+      }
+
+      // Fetch national percentile
+      try {
+        const nationalPerc = await callPercentile({ 
+          p_user_id: currentUser.id 
+        });
+        setPercentile(prev => ({ 
+          ...prev, 
+          national: { 
+            percentile: nationalPerc.percentile || 0, 
+            rank: nationalPerc.rank || 1, 
+            total: nationalPerc.total || 1 
+          } 
+        }));
+      } catch (err) {
+        console.error('National percentile error:', err);
+      }
+
+      // Fetch school stats
+      try {
+        const { data: schoolData } = await supabase
+          .from('school_stats')
+          .select('*')
+          .eq('school_code', currentUser.school_code)
+          .eq('level', currentUser.level)
+          .maybeSingle();
+        setSchoolStats(schoolData || { 
+          national_rank: 0, 
+          total_students: 0, 
+          best_subject_average: 0, 
+          improvement_amount: 0 
+        });
+      } catch (err) {
+        console.error('School stats error:', err);
+        setSchoolStats({ 
+          national_rank: 0, 
+          total_students: 0, 
+          best_subject_average: 0, 
+          improvement_amount: 0 
+        });
+      }
+
+      // Fetch top schools
+      try {
+        const { data: topSchoolsData } = await supabase
+          .from('school_stats')
+          .select('school_code, school_name, average_overall, national_rank')
+          .eq('level', currentUser.level)
+          .order('average_overall', { ascending: false })
+          .limit(5);
+        setTopSchools(topSchoolsData || []);
+      } catch (err) {
+        console.error('Top schools error:', err);
+      }
+
+      // Calculate subject data
+      const subjects = [...new Set(currentGrades.map(g => g.subject))];
+      const subjectStatsPromises = subjects.map(async (sub: string) => {
+        const subGrades = currentGrades.filter(g => g.subject === sub);
+        const sortedSubGrades = [...subGrades].sort((a, b) => new Date(a.assessment_date).getTime() - new Date(b.assessment_date).getTime());
+        const subTotalWeight = sortedSubGrades.reduce((sum, g) => sum + (g.weight || 1), 0);
+        const subWeightedSum = sortedSubGrades.reduce((sum, g) => sum + ((g.percentage || 0) * (g.weight || 1)), 0);
+        const subAvg = subTotalWeight > 0 ? subWeightedSum / subTotalWeight : 0;
+        const subTrend = sortedSubGrades.length >= 2 
+          ? (sortedSubGrades[sortedSubGrades.length - 1].percentage || 0) - (sortedSubGrades[0].percentage || 0) 
+          : 0;
+
+        let subPerc = 0;
+        try {
+          const subPercData = await callPercentile({ 
+            p_user_id: currentUser.id, 
+            p_school_code: currentUser.school_code, 
+            p_subject: sub 
+          });
+          subPerc = subPercData.percentile || 0;
+        } catch (err) {
+          console.error('Subject percentile error:', err);
+        }
+
+        return { 
+          subject: sub, 
+          average: subAvg, 
+          trend: subTrend, 
+          percentile: subPerc, 
+          grades: sortedSubGrades 
+        };
+      });
+      
+      const subjectStats = await Promise.all(subjectStatsPromises);
+      setSubjectData(subjectStats);
+
+      // Compute best subject
+      if (subjectStats.length > 0) {
+        const best = subjectStats.reduce((prev, curr) => 
+          (prev.average > curr.average ? prev : curr)
+        );
+        setBestSubject(best.subject);
+        setBestAvg(best.average);
+      }
+
+      // Calculate overall trend (weighted recent vs older)
+      const recentCount = Math.min(3, currentGrades.length);
+      const recent = currentGrades.slice(0, recentCount);
+      const recentTotalW = recent.reduce((sum, g) => sum + (g.weight || 1), 0);
+      const recentWSum = recent.reduce((sum, g) => sum + ((g.percentage || 0) * (g.weight || 1)), 0);
+      const recentAvg = recentTotalW > 0 ? recentWSum / recentTotalW : 0;
+      const olderSlice = currentGrades.slice(recentCount, recentCount * 2);
+      const olderTotalW = olderSlice.reduce((sum, g) => sum + (g.weight || 1), 0);
+      const olderWSum = olderSlice.reduce((sum, g) => sum + ((g.percentage || 0) * (g.weight || 1)), 0);
+      const olderAvg = olderTotalW > 0 ? olderWSum / olderTotalW : recentAvg;
+      setTrend(recentAvg - olderAvg);
+    } else {
+      setOverallAverage(0);
+      setSubjectData([]);
+      setTrend(0);
+      setBestSubject(null);
+      setBestAvg(0);
+    }
+  } catch (err) {
+    console.error('Error refetching data:', err);
+  }
+}, [supabase]); // Add supabase as dep if needed
+
+// Update the loadData useEffect in the Dashboard component to the following:
 useEffect(() => {
   const loadData = async (): Promise<void> => {
     try {
-      let { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
-        if (anonError) throw anonError;
-        session = anonData.session;
-        if (!session) {
-          throw new Error('Anonymous sign-in failed');
-        }
-      }
-
+      // Quick check: If no localStorage data, redirect to onboarding (enforce onboarding first)
       const localUserStr = localStorage.getItem('outrankUser');
-const localUserPartial: Partial<User> = localUserStr ? JSON.parse(localUserStr) : {
-  school_code: 'RI',
-  school_name: 'Raffles Institution',
-  level: 'sec_4'
-};
-
-const fallbackNickname = localUserPartial.nickname || `Anon${Math.random().toString(36).slice(2, 7).toUpperCase()}`; // e.g., "ANONX7K2P"
-
-const defaultUser: Omit<User, 'id' | 'opted_in_cohort' | 'created_at' | 'updated_at' | 'last_active_at'> = {
-  nickname: fallbackNickname,
-  school_code: localUserPartial.school_code || 'RI',
-  school_name: localUserPartial.school_name || 'Raffles Institution',
-  level: localUserPartial.level || 'sec_4'
-};
-
-// Upsert user in DB
-const { data: existingUser, error: fetchError }: { data: User | null; error: PostgrestError | null } = await supabase
-  .from('users')
-  .select('*')
-  .eq('id', session.user.id)
-  .single();
-
-// Handle potential nulls/errors explicitly to avoid runtime issues
-if (fetchError && fetchError.code !== 'PGRST116') {
-  throw fetchError; // Or handle gracefully
-}
-
-      let dbUser: User;
-      if (fetchError && fetchError.code === 'PGRST116') {
-        // Insert new user
-        const newUser: User = {
-          id: session.user.id,
-          ...defaultUser,
-          opted_in_cohort: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          last_active_at: new Date().toISOString()
-        };
-        const { data: insertedUser, error: insertError } = await supabase
-          .from('users')
-          .insert([newUser])
-          .select()
-          .single();
-        if (insertError) throw insertError;
-        dbUser = insertedUser!;
-      } else if (existingUser) {
-        dbUser = existingUser;
-        // Update if local data changed
-        const updates: Partial<User> = {};
-        if (localUserPartial.nickname && localUserPartial.nickname !== dbUser.nickname) {
-          updates.nickname = localUserPartial.nickname;
-        }
-        if (localUserPartial.school_code && localUserPartial.school_code !== dbUser.school_code) {
-          updates.school_code = localUserPartial.school_code;
-        }
-        if (localUserPartial.school_name && localUserPartial.school_name !== dbUser.school_name) {
-          updates.school_name = localUserPartial.school_name;
-        }
-        if (localUserPartial.level && localUserPartial.level !== dbUser.level) {
-          updates.level = localUserPartial.level;
-        }
-        if (Object.keys(updates).length > 0) {
-          updates.updated_at = new Date().toISOString();
-          updates.last_active_at = new Date().toISOString();
-          const { error: updateError } = await supabase
-            .from('users')
-            .update(updates)
-            .eq('id', session.user.id);
-          if (updateError) console.error('Update error:', updateError);
-        }
-      } else {
-        throw new Error('User fetch failed');
+      if (!localUserStr) {
+        router.push('/onboarding');
+        setLoading(false);
+        return;
       }
 
-      // Update localStorage with db id if needed
-      const updatedLocalUser = { ...localUserPartial, id: session.user.id };
-      localStorage.setItem('outrankUser', JSON.stringify(updatedLocalUser));
+      const localUserPartial: Partial<User> = JSON.parse(localUserStr);
+      if (!localUserPartial?.id || !localUserPartial.school_code || !localUserPartial.school_name || !localUserPartial.level) {
+        // Incomplete local data, clear and redirect
+        localStorage.removeItem('outrankUser');
+        router.push('/onboarding');
+        setLoading(false);
+        return;
+      }
+
+      // Get session (assume created by onboarding; don't create here)
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session || session.user.id !== localUserPartial.id) {
+        // No session or mismatch, redirect (onboarding will handle sign-in/creation)
+        router.push('/onboarding');
+        setLoading(false);
+        return;
+      }
+
+      // Fetch existing user from DB using session ID
+      const { data: existingUser, error: fetchError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        throw fetchError;
+      }
+
+      if (!existingUser) {
+        // No user in DB despite local/session, redirect to recreate via onboarding
+        localStorage.removeItem('outrankUser');
+        router.push('/onboarding');
+        setLoading(false);
+        return;
+      }
+
+      let dbUser = existingUser;
+
+      // Sync any local changes to DB (e.g., nickname update)
+      const updates: Partial<User> = {};
+      if (localUserPartial.nickname && localUserPartial.nickname !== dbUser.nickname) {
+        updates.nickname = localUserPartial.nickname;
+      }
+      // No need to sync school/level as they should be stable post-onboarding
+
+      if (Object.keys(updates).length > 0) {
+        updates.updated_at = new Date().toISOString();
+        updates.last_active_at = new Date().toISOString();
+        const { error: updateError } = await supabase
+          .from('users')
+          .update(updates)
+          .eq('id', session.user.id);
+        if (updateError) console.error('Update error:', updateError);
+        // Refresh dbUser after update
+        const { data: refreshedUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        dbUser = refreshedUser || dbUser;
+      }
+
+      // Update localStorage with full DB data for consistency
+      localStorage.setItem('outrankUser', JSON.stringify({ ...localUserPartial, ...dbUser }));
 
       setUser(dbUser);
       await refetchData(dbUser);
     } catch (err) {
       console.error('Error loading data:', err);
+      localStorage.removeItem('outrankUser'); // Clear invalid state
+      router.push('/onboarding');
     } finally {
       setLoading(false);
     }
   };
 
   loadData();
-}, [refetchData]);
+}, [refetchData, router]);
 
   // Scroll listener
   useEffect(() => {
@@ -1120,7 +1290,8 @@ if (fetchError && fetchError.code !== 'PGRST116') {
       assessment_name: formData.assessment_name,
       score: formData.score,
       max_score: formData.max_score,
-      assessment_date: formData.assessment_date
+      assessment_date: formData.assessment_date,
+      weight: formData.weight || 1.0
     };
 
     try {
@@ -1175,6 +1346,55 @@ if (fetchError && fetchError.code !== 'PGRST116') {
             />
           </div>
         </div>
+
+            {/* Bottom Navigation */}
+    <motion.div 
+      className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 grid grid-cols-5 place-items-center py-3 z-40"
+      initial={{ y: 100 }}
+      animate={{ y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+    >
+      <motion.button 
+        className="flex flex-col items-center text-xs font-medium text-lime-400" 
+        whileTap={{ scale: 0.9 }}
+        onClick={() => router.push('/dashboard')}
+      >
+        <BarChart3 size={24} className="mb-1" />
+        <span>Dashboard</span>
+      </motion.button>
+      <motion.button 
+        className="flex flex-col items-center text-xs font-medium text-gray-400" 
+        whileTap={{ scale: 0.9 }}
+        onClick={() => router.push('/rankings')}
+      >
+        <Trophy size={24} className="mb-1" />
+        <span>Rankings</span>
+      </motion.button>
+      <motion.button 
+        className="w-16 h-16 bg-lime-400 rounded-full flex items-center justify-center -mt-8 shadow-2xl border-4 border-slate-900 col-span-1" 
+        onClick={() => setIsModalOpen(true)}
+        whileTap={{ scale: 0.9 }}
+        whileHover={{ scale: 1.05 }}
+      >
+        <Plus size={28} className="text-black" />
+      </motion.button>
+      <motion.button 
+        className="flex flex-col items-center text-xs font-medium text-gray-400" 
+        whileTap={{ scale: 0.9 }}
+        onClick={() => router.push('/history')}
+      >
+        <Calendar size={24} className="mb-1" />
+        <span>History</span>
+      </motion.button>
+      <motion.button 
+        className="flex flex-col items-center text-xs font-medium text-gray-400" 
+        whileTap={{ scale: 0.9 }}
+        onClick={() => router.push('/profile')}
+      >
+        <Sparkles size={24} className="mb-1" />
+        <span>Profile</span>
+      </motion.button>
+    </motion.div>
       </div>
     );
   }
@@ -1201,204 +1421,247 @@ const getOrdinal = (n: number): string => {
   return n + suffix;
 };
 
-  return (
-    <div className="min-h-screen bg-slate-900 text-white pb-24">
-      <Header user={user} isScrolled={isScrolled} />
+// Replace the entire return statement in the Dashboard component with this:
 
-      <div className="px-5 py-6 space-y-6">
-        {grades.length === 0 ? (
-          <EmptyState onAddGrade={() => setIsModalOpen(true)} />
-        ) : (
-          <>
-            <OverallAverageCard average={overallAverage} trend={trend} />
+return (
+  <div className="min-h-screen bg-slate-900 text-white pb-24">
+    <Header user={user} isScrolled={isScrolled} />
 
-            <div className="grid grid-cols-2 gap-4">
-<StatCard
-  title="School Ranking"
-  value={getOrdinal(clampedSchoolRank)}
-  subtitle={`Better than ${safeSchoolBetter} peers`}
-  progress={Math.min(100, Math.max(0, percentile.school.percentile || 0))}
-  icon={<Crown size={18} />}
-  color="#A855F7"
-  onTap={() => {}}
-/>
-
-<StatCard
-  title="National Ranking"
-  value={getOrdinal(clampedNatRank)}
-  subtitle={`Better than ${safeNatBetter} students`}
-  progress={Math.min(100, Math.max(0, percentile.national.percentile || 0))}
-  icon={<Crown size={18} />}
-  color="#06B6D4"
-  onTap={() => {}}
-/>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              {bestSubject && (
-                <StatCard
-                  title="Top Subject"
-                  value={bestSubject.charAt(0).toUpperCase() + bestSubject.slice(1)}
-                  subtitle={`${bestAvg.toFixed(1)}% avg`}
-                  icon={<span className="text-xl">{SUBJECT_EMOJIS[bestSubject]}</span>}
-                  onTap={() => handleSubjectTap(subjectData.find(s => s.subject === bestSubject)!)}
-                  color="#84CC16"
-                />
-              )}
-              <StatCard
-                title="School Performance"
-                value={`#${schoolStats?.national_rank || 1}`}
-                subtitle={`${schoolStats?.total_students || 0} students`}
-                icon={<Users size={18} />}
-                color="#10B981"
-                onTap={() => {}}
-              />
-            </div>
-
-            {/* School Comparisons */}
-            {topSchools.length > 0 && (
-              <>
-                <h3 className="text-gray-400 text-xs uppercase tracking-wide mt-8 mb-4 font-medium">
-                  School Comparisons
-                </h3>
-                <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 space-y-2">
-                  {topSchools.map((school, i) => {
-                    const highlight = school.school_code === user?.school_code;
-                    return (
-                      <div key={i} className={`flex items-center justify-between text-sm ${highlight ? 'text-cyan-400' : 'text-gray-400'}`}>
-                        <span>#{school.national_rank} {school.school_name}</span>
-                        <span className="font-bold">{school.average_overall?.toFixed(1) || 0}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {subjectData.length > 0 && (
-              <>
-                <h3 className="text-gray-400 text-xs uppercase tracking-wide mt-8 mb-4 font-medium">
-                  Subject Insights
-                </h3>
-                <div className="space-y-4">
-                  {subjectData.map((sub, index) => (
-                    <motion.div
-                      key={sub.subject}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.4, delay: index * 0.1 }}
-                    >
-                      <SubjectCard
-                        {...sub}
-                        onTap={() => handleSubjectTap(sub)}
-                      />
-                    </motion.div>
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </div>
-
-      <AddGradeModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSubmit={handleAddGrade}
-        subjects={Object.keys(SUBJECT_EMOJIS)}
-      />
-
-      <SubjectDetailModal
-        isOpen={!!selectedSubject}
-        subject={selectedSubject}
-        onClose={() => setSelectedSubject(null)}
-      />
-
-      {/* Bottom Navigation */}
+    <div className="px-5 py-6 space-y-6">
+{loading ? (
+  <>
+    <motion.div 
+      className="bg-slate-800 rounded-2xl h-64 animate-pulse"
+      initial={{ opacity: 0.5 }}
+      animate={{ opacity: [0.5, 0.7, 0.5] }}
+      transition={{ duration: 1.5, repeat: Infinity }}
+    />
+    <div className="grid grid-cols-2 gap-4">
       <motion.div 
-        className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 grid grid-cols-5 place-items-center py-3 z-40"
-        initial={{ y: 100 }}
-        animate={{ y: 0 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-      >
-        <motion.button 
-          className="flex flex-col items-center text-xs font-medium text-lime-400" 
-          whileTap={{ scale: 0.9 }}
-          onClick={() => router.push('/dashboard')}
-        >
-          <BarChart3 size={24} className="mb-1" />
-          <span>Dashboard</span>
-        </motion.button>
-        <motion.button 
-          className="flex flex-col items-center text-xs font-medium text-gray-400" 
-          whileTap={{ scale: 0.9 }}
-          onClick={() => router.push('/rankings')}
-        >
-          <Trophy size={24} className="mb-1" />
-          <span>Rankings</span>
-        </motion.button>
-        <motion.button 
-          className="w-16 h-16 bg-lime-400 rounded-full flex items-center justify-center -mt-8 shadow-2xl border-4 border-slate-900 col-span-1" 
-          onClick={() => setIsModalOpen(true)}
-          whileTap={{ scale: 0.9 }}
-          whileHover={{ scale: 1.05 }}
-        >
-          <Plus size={28} className="text-black" />
-        </motion.button>
-        <motion.button 
-          className="flex flex-col items-center text-xs font-medium text-gray-400" 
-          whileTap={{ scale: 0.9 }}
-          onClick={() => router.push('/history')}
-        >
-          <Calendar size={24} className="mb-1" />
-          <span>History</span>
-        </motion.button>
-        <motion.button 
-          className="flex flex-col items-center text-xs font-medium text-gray-400" 
-          whileTap={{ scale: 0.9 }}
-          onClick={() => router.push('/profile')}
-        >
-          <Sparkles size={24} className="mb-1" />
-          <span>Profile</span>
-        </motion.button>
-      </motion.div>
-
-      <style jsx global>{`
-        * { 
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          -webkit-font-smoothing: antialiased;
-          -moz-osx-font-smoothing: grayscale;
-        }
-        body, html {
-          background-color: #0F172A;
-          color: #F9FAFB;
-          overscroll-behavior: none;
-          overflow-x: hidden;
-        }
-        html {
-          scroll-behavior: smooth;
-        }
-        input[type="number"] {
-          font-size: 16px;
-        }
-        .recharts-default-tooltip {
-          background: #1E293B !important;
-          border: 1px solid #475569 !important;
-          border-radius: 12px !important;
-        }
-        ::-webkit-scrollbar {
-          width: 4px;
-        }
-        ::-webkit-scrollbar-track {
-          background: #1E293B;
-        }
-        ::-webkit-scrollbar-thumb {
-          background: #475569;
-          border-radius: 2px;
-        }
-      `}</style>
+        className="bg-slate-800 rounded-xl h-40 animate-pulse"
+        initial={{ opacity: 0.5 }}
+        animate={{ opacity: [0.5, 0.7, 0.5] }}
+        transition={{ duration: 1.5, repeat: Infinity, delay: 0.1 }}
+      />
+      <motion.div 
+        className="bg-slate-800 rounded-xl h-40 animate-pulse"
+        initial={{ opacity: 0.5 }}
+        animate={{ opacity: [0.5, 0.7, 0.5] }}
+        transition={{ duration: 1.5, repeat: Infinity, delay: 0.2 }}
+      />
     </div>
-  );
+  </>
+) : grades.length === 0 ? (
+  <EmptyState onAddGrade={() => setIsModalOpen(true)} />
+) : (
+  <>
+    <OverallAverageCard average={overallAverage} trend={trend} />
+
+    <div className="grid grid-cols-2 gap-4">
+      <StatCard
+        title="School Ranking"
+        value={getOrdinal(clampedSchoolRank)}
+        subtitle={`Better than ${safeSchoolBetter} peers`}
+        progress={Math.min(100, Math.max(0, percentile.school.percentile || 0))}
+        icon={<Crown size={18} />}
+        color="#A855F7"
+        onTap={() => {}}
+      />
+
+      <StatCard
+        title="National Ranking"
+        value={getOrdinal(clampedNatRank)}
+        subtitle={`Better than ${safeNatBetter} students`}
+        progress={Math.min(100, Math.max(0, percentile.national.percentile || 0))}
+        icon={<Crown size={18} />}
+        color="#06B6D4"
+        onTap={() => {}}
+      />
+    </div>
+
+    <div className="grid grid-cols-2 gap-4">
+      {bestSubject && (
+        <StatCard
+          title="Top Subject"
+          value={bestSubject.charAt(0).toUpperCase() + bestSubject.slice(1)}
+          subtitle={`${bestAvg.toFixed(1)}% avg`}
+          icon={<span className="text-xl">{SUBJECT_EMOJIS[bestSubject]}</span>}
+          onTap={() => handleSubjectTap(subjectData.find(s => s.subject === bestSubject)!)}
+          color="#84CC16"
+        />
+      )}
+      <StatCard
+        title="School Performance"
+        value={`#${schoolStats?.national_rank || 1}`}
+        subtitle={`${schoolStats?.total_students || 0} students`}
+        icon={<Users size={18} />}
+        color="#10B981"
+        onTap={() => {}}
+      />
+    </div>
+
+    {subjectData.length > 0 && (
+      <>
+        <h3 className="text-gray-400 text-xs uppercase tracking-wide mt-8 mb-4 font-medium">
+          Subject Insights
+        </h3>
+        <div className="space-y-4">
+          {subjectData.map((sub, index) => (
+            <motion.div
+              key={sub.subject}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: index * 0.1 }}
+            >
+              <SubjectCard
+                {...sub}
+                onTap={() => handleSubjectTap(sub)}
+              />
+            </motion.div>
+          ))}
+        </div>
+      </>
+    )}
+
+{/* School Comparisons */}
+{topSchools.length > 0 && schoolStats?.average_overall !== undefined && (
+  <>
+    <h3 className="text-gray-400 text-xs uppercase tracking-wide mt-8 mb-4 font-medium">
+      School Comparisons
+    </h3>
+    <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 space-y-2">
+      {topSchools.map((school, i) => {
+        const highlight = school.school_code === user?.school_code;
+        return (
+          <div key={i} className={`flex items-center justify-between text-sm ${highlight ? 'text-cyan-400' : 'text-gray-400'}`}>
+            <span>#{school.national_rank || i + 1} {school.school_name}</span>
+            <span className="font-bold">{school.average_overall?.toFixed(1) || 0}%</span>
+          </div>
+        );
+      })}
+      {!topSchools.some(s => s.school_code === user?.school_code) && (
+        <div className="flex items-center justify-between text-sm text-gray-400">
+          <span>#… {user?.school_name}</span>
+          <span className="font-bold">{schoolStats.average_overall.toFixed(1)}%</span>
+        </div>
+      )}
+    </div>
+  </>
+)}
+  </>
+)}
+    </div>
+
+        {/* Bottom Navigation */}
+    <motion.div 
+      className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 grid grid-cols-5 place-items-center py-3 z-40"
+      initial={{ y: 100 }}
+      animate={{ y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+    >
+      <motion.button 
+        className="flex flex-col items-center text-xs font-medium text-lime-400" 
+        whileTap={{ scale: 0.9 }}
+        onClick={() => router.push('/dashboard')}
+      >
+        <BarChart3 size={24} className="mb-1" />
+        <span>Dashboard</span>
+      </motion.button>
+      <motion.button 
+        className="flex flex-col items-center text-xs font-medium text-gray-400" 
+        whileTap={{ scale: 0.9 }}
+        onClick={() => router.push('/rankings')}
+      >
+        <Trophy size={24} className="mb-1" />
+        <span>Rankings</span>
+      </motion.button>
+      <motion.button 
+        className="w-16 h-16 bg-lime-400 rounded-full flex items-center justify-center -mt-8 shadow-2xl border-4 border-slate-900 col-span-1" 
+        onClick={() => setIsModalOpen(true)}
+        whileTap={{ scale: 0.9 }}
+        whileHover={{ scale: 1.05 }}
+      >
+        <Plus size={28} className="text-black" />
+      </motion.button>
+      <motion.button 
+        className="flex flex-col items-center text-xs font-medium text-gray-400" 
+        whileTap={{ scale: 0.9 }}
+        onClick={() => router.push('/history')}
+      >
+        <Calendar size={24} className="mb-1" />
+        <span>History</span>
+      </motion.button>
+      <motion.button 
+        className="flex flex-col items-center text-xs font-medium text-gray-400" 
+        whileTap={{ scale: 0.9 }}
+        onClick={() => router.push('/profile')}
+      >
+        <Sparkles size={24} className="mb-1" />
+        <span>Profile</span>
+      </motion.button>
+    </motion.div>
+
+    <AddGradeModal
+      isOpen={isModalOpen}
+      onClose={() => setIsModalOpen(false)}
+      onSubmit={handleAddGrade}
+      availableSubjects={availableSubjects}
+      enableWeights={enableWeights}
+      onOpenSettings={() => setIsSettingsOpen(true)}
+    />
+
+    <AddGradeSettingsModal
+      isOpen={isSettingsOpen}
+      onClose={() => setIsSettingsOpen(false)}
+      presetSubjects={presetSubjects}
+      setPresetSubjects={setPresetSubjects}
+      enableWeights={enableWeights}
+      setEnableWeights={setEnableWeights}
+    />
+
+    <SubjectDetailModal
+      isOpen={!!selectedSubject}
+      subject={selectedSubject}
+      onClose={() => setSelectedSubject(null)}
+    />
+
+    <style jsx global>{`
+      * { 
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      body, html {
+        background-color: #0F172A;
+        color: #F9FAFB;
+        overscroll-behavior: none;
+        overflow-x: hidden;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      input[type="number"] {
+        font-size: 16px;
+      }
+      .recharts-default-tooltip {
+        background: #1E293B !important;
+        border: 1px solid #475569 !important;
+        border-radius: 12px !important;
+      }
+      ::-webkit-scrollbar {
+        width: 4px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #1E293B;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #475569;
+        border-radius: 2px;
+      }
+    `}</style>
+  </div>
+);
+
 };
 
 export default Dashboard;

@@ -1532,6 +1532,54 @@ const handleCreateGroup = async (formData: GroupFormData): Promise<void> => {
             />
           </div>
         </div>
+
+              <motion.div 
+        className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 grid grid-cols-5 place-items-center py-3 z-40"
+        initial={{ y: 100 }}
+        animate={{ y: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+      >
+        <motion.button 
+          className="flex flex-col items-center text-xs font-medium text-gray-400" 
+          whileTap={{ scale: 0.9 }}
+          onClick={() => router.push('/dashboard')}
+        >
+          <BarChart3 size={24} className="mb-1" />
+          <span>Dashboard</span>
+        </motion.button>
+        <motion.button 
+          className="flex flex-col items-center text-xs font-medium text-lime-400" 
+          whileTap={{ scale: 0.9 }}
+          onClick={() => router.push('/rankings')}
+        >
+          <Trophy size={24} className="mb-1" />
+          <span>Rankings</span>
+        </motion.button>
+        <motion.button 
+          className="w-16 h-16 bg-lime-400 rounded-full flex items-center justify-center -mt-8 shadow-2xl border-4 border-slate-900 col-span-1" 
+          onClick={() => setIsModalOpen(true)}
+          whileTap={{ scale: 0.9 }}
+          whileHover={{ scale: 1.05 }}
+        >
+          <Plus size={28} className="text-black" />
+        </motion.button>
+        <motion.button 
+          className="flex flex-col items-center text-xs font-medium text-gray-400" 
+          whileTap={{ scale: 0.9 }}
+          onClick={() => router.push('/history')}
+        >
+          <Calendar size={24} className="mb-1" />
+          <span>History</span>
+        </motion.button>
+        <motion.button 
+          className="flex flex-col items-center text-xs font-medium text-gray-400" 
+          whileTap={{ scale: 0.9 }}
+          onClick={() => router.push('/profile')}
+        >
+          <Sparkles size={24} className="mb-1" />
+          <span>Profile</span>
+        </motion.button>
+      </motion.div>
       </div>
     );
   }
